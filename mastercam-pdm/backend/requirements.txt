@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+GitPython
+requests
+pydantic
+cryptography
+psutil
+bcrypt
+PyJWT
