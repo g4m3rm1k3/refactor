@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 # Import both of our new routers
-from app.api.routers import auth, files
+from app.api.routers import auth, files, admin
 
 
 @asynccontextmanager
@@ -28,9 +28,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include both routers in our main application
+# Include all routers in our main application
 app.include_router(auth.router)
 app.include_router(files.router)
+app.include_router(admin.router)
 
 
 @app.get("/")
