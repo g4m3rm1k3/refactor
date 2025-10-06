@@ -4,8 +4,8 @@ import threading
 import socket
 import logging
 
-# We will create app.main in the next step. This imports the 'app' variable from it.
-from app.main import app
+# We no longer need to import 'app' here, as we're passing it as a string
+# from app.main import app
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,12 @@ def main():
         port = find_available_port(8000)
         logger.info(f"Found available port: {port}")
 
-        # Open the web browser automatically after a short delay
         threading.Timer(1.5, lambda: webbrowser.open(
             f"http://localhost:{port}")).start()
 
-        # Start the Uvicorn server
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+        # Pass the app location as a string
+        uvicorn.run("app.main:app", host="127.0.0.1",
+                    port=port, log_level="info")
 
     except IOError as e:
         logger.error(f"{e} Aborting startup.")
@@ -44,7 +44,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # This block ensures the code only runs when you execute `python run.py`
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
     main()
