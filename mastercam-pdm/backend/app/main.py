@@ -1,9 +1,13 @@
 # backend/app/main.py
 
 from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates, TemplateResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
+import sys
 from pathlib import Path
 
 # Import all our components
@@ -15,6 +19,13 @@ from app.api.routers import auth, files, admin, config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    # This correctly points to the 'backend' folder as the base
+    base_path = Path(__file__).resolve().parents[1]
+    return base_path / relative_path
 
 
 @asynccontextmanager
@@ -97,23 +108,32 @@ app = FastAPI(
             "description": "Getting and setting application configuration."},
     ]
 )
+# --- Mount Static Files ---
+# This is crucial. It tells FastAPI to serve everything in the 'static' folder.
+app.mount("/static", StaticFiles(directory=resource_path("static")), name="static")
+
+# --- Setup Template Engine ---
+# This tells FastAPI where to find the index.html file.
+templates = Jinja2Templates(directory=resource_path("templates"))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # <--- Correct argument name
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# --- Include API Routers ---
 app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(admin.router)
 app.include_router(config.router)
 
 
+# --- Root Endpoint (Serves the UI) ---
+# We replace the old JSON endpoint with this one to serve our HTML file.
 @app.get("/")
 async def root(request: Request):
-    if request.app.state.git_repo:
-        return {"message": "Welcome! The API is configured and running."}
-    return {"message": "Welcome! The API is running in limited mode. Please configure GitLab credentials."}
+    """Serves the main index.html file."""
+    return templates.TemplateResponse("index.html", {"request": request})
