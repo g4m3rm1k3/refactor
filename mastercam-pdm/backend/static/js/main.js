@@ -1,32 +1,32 @@
 // backend/static/js/main.js
 
 import { getConfig, getFiles } from "./api/service.js";
-import { setState, subscribe, getState } from "./state/store.js";
+import { setState, subscribe } from "./state/store.js";
 import { createFileCard } from "./components/FileCard.js";
 import { setupConfigPanel } from "./components/ConfigPanel.js";
 import { connectWebSocket } from "./services/websocket.js";
 import { showAuthDialog } from "./components/LoginModal.js";
-import { checkPasswordExists } from "./services/auth.js";
-import { showDashboardDialog } from "./components/DashboardModal.js";
 import { checkSession, checkPasswordExists } from "./services/auth.js";
+import { showDashboardDialog } from "./components/DashboardModal.js";
 
 const fileListEl = document.getElementById("fileList");
+let appState = {}; // Keep a local copy of state to compare old vs. new
 
-// --- Main Render Function ---
 function render(state) {
+  appState = state; // Update our local copy for the subscribe function to use
+
   // --- Header Updates ---
   const currentUserEl = document.getElementById("currentUser");
   if (currentUserEl) {
     currentUserEl.textContent = state.currentUser || "Not Logged In";
   }
   const statusIndicators = document.getElementById("status-indicators");
-  if (state.isAuthenticated) {
-    statusIndicators.classList.remove("hidden");
+  if (statusIndicators) {
+    statusIndicators.style.display = state.isAuthenticated ? "flex" : "none";
   }
 
-  // --- File List Updates ---
+  // --- File List Rendering ---
   fileListEl.innerHTML = "";
-
   if (!state.isConfigured) {
     fileListEl.innerHTML = `<p class="text-center text-gray-500">Application is not configured. Please open the settings panel.</p>`;
     return;
@@ -55,7 +55,7 @@ function render(state) {
   }
 }
 
-// --- Dark Mode Logic ---
+// --- Helper Functions ---
 function applyThemePreference() {
   if (
     localStorage.theme === "dark" ||
@@ -67,6 +67,7 @@ function applyThemePreference() {
     document.documentElement.classList.remove("dark");
   }
 }
+
 function toggleDarkMode() {
   document.documentElement.classList.toggle("dark");
   localStorage.theme = document.documentElement.classList.contains("dark")
@@ -84,25 +85,44 @@ async function loadAppData() {
 
 async function runApp() {
   console.log("DOM fully loaded. Starting application.");
+
   try {
-    const config = await getConfig();
-    setState({ isConfigured: config.has_token });
-
-    if (!config.has_token) return;
-
-    const hasPassword = await checkPasswordExists(config.username);
-    const loginSuccess = await showAuthDialog(config.username, hasPassword);
-
-    if (loginSuccess) {
-      await loadAppData();
-    }
+    // 1. First, try to validate the existing session cookie.
+    const sessionUser = await checkSession();
+    console.log("✅ Valid session found for user:", sessionUser.username);
+    setState({
+      currentUser: sessionUser.username,
+      isAdmin: sessionUser.is_admin,
+      isAuthenticated: true,
+      isConfigured: true, // If we have a session, we must be configured
+    });
+    // The subscribe function will trigger loadAppData() automatically.
   } catch (error) {
-    console.error(`❌ Initialization failed: ${error.message}`);
+    // 2. If session check fails, start the manual login flow.
+    console.log("No valid session. Starting login flow.");
+    try {
+      const config = await getConfig();
+      setState({ isConfigured: config.has_token });
+
+      if (!config.has_token) return;
+
+      const { has_password } = await checkPasswordExists(config.username);
+      // showAuthDialog now returns true on success, which triggers the subscribe logic
+      await showAuthDialog(config.username, has_password);
+    } catch (initError) {
+      console.error(`❌ Initialization failed: ${initError.message}`);
+    }
   }
 }
 
 // --- APP START ---
-subscribe(render);
+subscribe((newState) => {
+  const oldIsAuthenticated = appState.isAuthenticated;
+  render(newState);
+  if (newState.isAuthenticated && !oldIsAuthenticated) {
+    loadAppData();
+  }
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   applyThemePreference();

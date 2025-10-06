@@ -75,3 +75,33 @@ export async function getFileHistory(filename) {
   });
   return handleResponse(response);
 }
+
+export async function cancelCheckout(filename, user) {
+  const response = await fetch(`/files/${filename}/cancel_checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+    credentials: "include",
+  });
+  return handleResponse(response);
+}
+
+export async function deleteFile(filename, adminUser) {
+  const response = await fetch(`/admin/files/${filename}/delete`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_user: adminUser }),
+    credentials: "include",
+  });
+  return handleResponse(response);
+}
+
+export async function overrideLock(filename, adminUser) {
+  const response = await fetch(`/admin/files/${filename}/override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_user: adminUser }),
+    credentials: "include",
+  });
+  return handleResponse(response);
+}
