@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "gitlab": {},
+  "local": {},
+  "ui": {},
+  "security": {
+    "allow_insecure_ssl": false
+  },
+  "polling": {
+    "enabled": true,
+    "interval_seconds": 15,
+    "check_on_activity": true
+  }
+}
