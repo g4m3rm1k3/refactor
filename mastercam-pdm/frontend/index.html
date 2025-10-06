@@ -1,0 +1,51 @@
+<template id="file-card-template">
+  <div
+    class="py-6 px-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600 hover:shadow-lg transition-shadow"
+    data-file-id=""
+  >
+    <div
+      class="flex flex-col md:flex-row md:items-start md:justify-between space-y-4 md:space-y-0"
+    >
+      <div class="flex-grow">
+        <div class="flex items-center space-x-3 mb-2 flex-wrap">
+          <h4
+            class="text-lg font-semibold text-gray-900 dark:text-white"
+            data-field="filename"
+          ></h4>
+          <span
+            class="text-xs font-semibold px-2.5 py-1 rounded-full"
+            data-field="revision"
+          ></span>
+          <span
+            class="text-xs font-semibold px-2.5 py-1 rounded-full"
+            data-field="status"
+          ></span>
+        </div>
+        <p
+          class="italic text-gray-700 dark:text-gray-300 text-sm mb-3"
+          data-field="description"
+        ></p>
+        <div
+          class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400"
+        >
+          <div class="flex items-center space-x-2" data-field="size-container">
+            <i class="fa-solid fa-hard-drive"></i
+            ><span data-field="size"></span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-clock"></i
+            ><span data-field="modified_at"></span>
+          </div>
+        </div>
+        <div
+          class="flex items-center space-x-2 text-sm mt-2"
+          data-field="lock-info"
+        ></div>
+      </div>
+      <div
+        class="flex items-center space-x-2 flex-wrap"
+        data-field="action-buttons"
+      ></div>
+    </div>
+  </div>
+</template>
