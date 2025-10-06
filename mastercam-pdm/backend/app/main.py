@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
-# NEW: Import the router we just created
-from app.api.routers import auth
+# Import both of our new routers
+from app.api.routers import auth, files
 
 
 @asynccontextmanager
@@ -12,7 +12,6 @@ async def lifespan(app: FastAPI):
     logging.info("Application starting up...")
     yield
     logging.info("Application shutting down.")
-
 
 app = FastAPI(
     title="Mastercam GitLab Interface",
@@ -29,8 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# NEW: Tell the main app to include all the routes from our auth router
+# Include both routers in our main application
 app.include_router(auth.router)
+app.include_router(files.router)
 
 
 @app.get("/")
