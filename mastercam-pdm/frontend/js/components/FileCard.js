@@ -1,6 +1,8 @@
 // frontend/js/components/FileCard.js
 import { formatDate, formatBytes } from "../utils/helpers.js";
 
+import { showCheckinDialog } from "./CheckinModal.js";
+
 // Get the template from the DOM once and reuse it
 const template = document.getElementById("file-card-template");
 
@@ -94,6 +96,13 @@ export function createFileCard(file, currentUser, isAdminMode) {
   // buttons could even be their own components!
   const buttonsContainer = card.querySelector('[data-field="action-buttons"]');
   buttonsContainer.innerHTML = getActionButtons(file, currentUser, isAdminMode);
+
+  const checkinBtn = buttonsContainer.querySelector(".js-checkin-btn");
+  if (checkinBtn) {
+    checkinBtn.addEventListener("click", () => {
+      showCheckinDialog(file);
+    });
+  }
 
   return card;
 }

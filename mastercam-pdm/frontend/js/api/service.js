@@ -74,3 +74,20 @@ export async function checkoutFile(filename, user) {
 }
 
 // We will add more functions here for checkin, login, etc., as we need them.
+export async function getDashboardStats() {
+  const token = getAuthToken();
+  const response = await fetch(`${BASE_URL}/dashboard/stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(response);
+}
+export async function getActivityFeed(limit = 50, offset = 0) {
+  const token = getAuthToken();
+  const response = await fetch(
+    `${BASE_URL}/dashboard/activity?limit=${limit}&offset=${offset}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return handleResponse(response);
+}
