@@ -2,6 +2,7 @@
 
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.core.security import UserAuth  # <-- THIS LINE WAS MISSING
 
 # We no longer need to import the services themselves here,
 # as we're just retrieving them from the app's state.
@@ -31,11 +32,21 @@ def get_user_auth(request: Request):
 
 
 def get_current_user(
-    token: HTTPAuthorizationCredentials = Depends(reusable_oauth2),
-    auth_service=Depends(get_user_auth)
+    request: Request,  # We now depend on the Request object
+    auth_service: UserAuth = Depends(get_user_auth)
 ) -> dict:
-    """Dependency to verify a token and return the user payload."""
-    payload = auth_service.verify_token(token.credentials)
+    """
+    Dependency to get the token from the request's cookie,
+    verify it, and return the user payload.
+    """
+    token = request.cookies.get("auth_token")  # Read the token from the cookie
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    payload = auth_service.verify_token(token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

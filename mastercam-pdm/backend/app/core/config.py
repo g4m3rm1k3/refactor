@@ -3,6 +3,7 @@ import logging
 import base64
 import os
 import sys
+from typing import List
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -16,12 +17,15 @@ class AppConfig(BaseModel):
     version: str = "2.0.0"
     gitlab: dict = Field(default_factory=dict)
     local: dict = Field(default_factory=dict)
+    # ADD THIS NEW LINE:
+    allowed_file_types: List[str] = Field(
+        default=[".mcam", ".vnc", ".emcam", ".link"])
+    # (The rest of the model stays the same)
     ui: dict = Field(default_factory=dict)
     security: dict = Field(default_factory=lambda: {
                            "allow_insecure_ssl": False})
     polling: dict = Field(default_factory=lambda: {
-        "enabled": True, "interval_seconds": 15, "check_on_activity": True
-    })
+                          "enabled": True, "interval_seconds": 15, "check_on_activity": True})
 
 
 class EncryptionManager:

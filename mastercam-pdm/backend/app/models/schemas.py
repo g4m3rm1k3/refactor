@@ -157,3 +157,11 @@ class FileHistory(BaseModel):
     filename: str = Field(..., description="Name of the file")
     history: List[Dict[str, Any]
                   ] = Field(..., description="List of historical commits for this file")
+
+# Add this class to backend/app/models/schemas.py
+
+
+class InitialUserSetup(BaseModel):
+    username: str
+    gitlab_token: str
+    new_password: str = Field(..., min_length=8)

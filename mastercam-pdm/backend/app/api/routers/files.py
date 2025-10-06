@@ -7,6 +7,7 @@ from app.api.dependencies import get_git_repo, get_lock_manager, get_current_use
 from app.services.git_service import GitRepository
 from app.services.lock_service import MetadataManager
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +25,99 @@ async def get_all_files(
     lock_manager: MetadataManager = Depends(get_lock_manager),
     current_user: dict = Depends(get_current_user)
 ):
-    """Retrieves a structured list of all files in the repository."""
-    # NOTE: The full logic for this function goes here. For brevity, it is omitted.
-    # Please use the full function body from the previous step.
-    return {}
+    """
+    Retrieves a structured list of all files, including processing for .link files
+    to create virtual file entries.
+    """
+    if not git_repo or not lock_manager:
+        raise HTTPException(
+            status_code=503, detail="Repository not initialized.")
+
+    try:
+        all_files_from_git = git_repo.list_files()
+        all_locks = {lock['file']                     : lock for lock in lock_manager.get_all_locks()}
+
+        physical_files = [
+            f for f in all_files_from_git if not f['path'].endswith('.link')]
+        link_files = [
+            f for f in all_files_from_git if f['path'].endswith('.link')]
+
+        master_file_map = {f['filename']: f for f in physical_files}
+
+        # This list will hold both real and virtual (linked) files for processing
+        all_files_to_process = list(master_file_map.values())
+
+        # Process .link files to create virtual file entries
+        for link_file in link_files:
+            try:
+                link_content_bytes = git_repo.get_file_content(
+                    link_file['path'])
+                if not link_content_bytes:
+                    continue
+
+                link_content = json.loads(link_content_bytes)
+                master_filename = link_content.get("master_file")
+
+                if master_filename and master_filename in master_file_map:
+                    virtual_filename = link_file['filename'].replace(
+                        '.link', '')
+                    virtual_file = {
+                        'filename': virtual_filename,
+                        'path': virtual_filename,  # Links use their own name as a virtual path
+                        'size': 0,
+                        'modified_at': link_file['modified_at'],
+                        'is_link': True,
+                        'master_file': master_filename
+                    }
+                    all_files_to_process.append(virtual_file)
+            except Exception as e:
+                logger.error(
+                    f"Could not process link file {link_file['filename']}: {e}")
+
+        # Now, process the combined list to add metadata and lock info
+        grouped_files = {}
+        username = current_user.get('sub')
+
+        for file_data in all_files_to_process:
+            path_for_meta = file_data['path']
+
+            # Enrich with lock status
+            lock_info = all_locks.get(path_for_meta)
+            if lock_info:
+                file_data['status'] = "checked_out_by_user" if lock_info.get(
+                    'user') == username else "locked"
+                file_data['locked_by'] = lock_info.get('user')
+                file_data['locked_at'] = lock_info.get('timestamp')
+            else:
+                file_data['status'] = "unlocked"
+
+            # Enrich with metadata from .meta.json files
+            meta_content_bytes = git_repo.get_file_content(
+                f"{path_for_meta}.meta.json")
+            if meta_content_bytes:
+                try:
+                    meta_content = json.loads(meta_content_bytes)
+                    file_data['description'] = meta_content.get('description')
+                    file_data['revision'] = meta_content.get('revision')
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Could not parse metadata for {path_for_meta}")
+
+            # Grouping logic
+            group_name = "Miscellaneous"
+            if file_data['filename'][:2].isdigit():
+                group_name = f"{file_data['filename'][:2]}XXXXX"
+            if group_name not in grouped_files:
+                grouped_files[group_name] = []
+
+            grouped_files[group_name].append(file_data)
+
+        return grouped_files
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve file list: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve file list.")
 
 
 # This endpoint was moved in the previous step
@@ -194,3 +284,25 @@ async def get_file_history(
 
     history = git_repo.get_file_history(file_path)
     return {"filename": filename, "history": history}
+# Add to backend/app/api/routers/files.py
+
+
+@router.get("/{filename}/versions/{commit_hash}", response_class=Response)
+async def download_file_version(
+    filename: str,
+    commit_hash: str,
+    git_repo: GitRepository = Depends(get_git_repo)
+):
+    file_path = git_repo.find_file_path(filename)
+    if not file_path:
+        raise HTTPException(
+            status_code=404, detail="File not found in current version.")
+
+    content = git_repo.get_file_content_at_commit(file_path, commit_hash)
+    if content is None:
+        raise HTTPException(
+            status_code=404, detail=f"File '{filename}' not found at commit '{commit_hash[:7]}'.")
+
+    base, ext = os.path.splitext(filename)
+    download_filename = f"{base}_rev_{commit_hash[:7]}{ext}"
+    return Response(content, media_type='application/octet-stream', headers={'Content-Disposition': f'attachment; filename="{download_filename}"'})

@@ -1,11 +1,15 @@
 // frontend/js/components/ConfigPanel.js
 
-let panelElement = null; // This will hold the live DOM element for the panel
+import { Modal } from "./Modal.js";
+import { saveConfig } from "../api/service.js"; // NEW IMPORT
+// We'll need our notification system here, which we'll refactor next.
+// For now, we'll use a simple alert().
+
+let panelElement = null;
 
 function closePanel() {
   if (panelElement) {
     panelElement.classList.add("translate-x-full");
-    // Remove the element from the DOM after the transition is complete
     panelElement.addEventListener(
       "transitionend",
       () => {
@@ -17,8 +21,31 @@ function closePanel() {
   }
 }
 
+async function handleConfigFormSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+
+  const configData = {
+    gitlab_url: form.querySelector("#gitlabUrl").value,
+    project_id: form.querySelector("#projectId").value,
+    username: form.querySelector("#username").value,
+    token: form.querySelector("#token").value,
+    allow_insecure_ssl: form.querySelector("#allowInsecureSsl").checked,
+  };
+
+  try {
+    const result = await saveConfig(configData);
+    alert(
+      "Configuration saved! Please restart the backend server (CTRL+C then `python run.py`)."
+    );
+    closePanel();
+  } catch (error) {
+    alert(`Error saving configuration: ${error.message}`);
+  }
+}
+
 function openPanel() {
-  if (panelElement) return; // Already open
+  if (panelElement) return;
 
   const template = document.getElementById("template-config-panel");
   const content = template.content.cloneNode(true);
@@ -33,40 +60,23 @@ function openPanel() {
   panelElement.querySelectorAll(".config-tab").forEach((tabButton) => {
     tabButton.addEventListener("click", () => {
       const tabName = tabButton.id.replace("Tab", "");
-      switchTab(tabName);
+      // switchTab(tabName); // Logic for this is still pending
     });
   });
 
+  // NEW: Add event listener for the form submission
+  const configForm = panelElement.querySelector("#configForm");
+  if (configForm) {
+    configForm.addEventListener("submit", handleConfigFormSubmit);
+  }
+
   document.body.appendChild(panelElement);
 
-  // Trigger the slide-in animation
   requestAnimationFrame(() => {
     panelElement.classList.remove("translate-x-full");
   });
 }
 
-function switchTab(tabName) {
-  if (!panelElement) return;
-
-  // Update tab buttons
-  panelElement.querySelectorAll(".config-tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.id === `${tabName}Tab`);
-  });
-
-  // Update tab content
-  panelElement.querySelectorAll(".config-tab-content").forEach((content) => {
-    content.classList.toggle("hidden", content.id !== `${tabName}Content`);
-  });
-
-  // Load data if switching to a data-heavy tab
-  if (tabName === "health") {
-    // TODO: Call a function to refresh health status
-    console.log("Switched to Health tab. Need to load data.");
-  }
-}
-
-// This is the main function we will export.
-// It attaches the openPanel function to a trigger button.
 export function setupConfigPanel(triggerButtonId) {
   const triggerButton = document.getElementById(triggerButtonId);
   if (triggerButton) {

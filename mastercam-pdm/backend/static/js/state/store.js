@@ -4,6 +4,7 @@
 const _state = {
   currentUser: null,
   isAdmin: false,
+  isAuthenticated: false, // <-- ADD THIS LINE
   groupedFiles: {},
   isConfigured: false,
   // We can add anything else our app needs to remember here.

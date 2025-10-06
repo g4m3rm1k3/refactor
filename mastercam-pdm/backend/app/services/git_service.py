@@ -6,6 +6,7 @@ import shutil
 import time
 import re
 import stat
+import json
 from pathlib import Path
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime, timezone
@@ -21,17 +22,52 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # --- Git LFS Utility Functions ---
-# (These remain the same as before)
 
 
 def get_bundled_git_lfs_path() -> Optional[Path]:
-    # ... (full function code)
-    pass
+    try:
+        if getattr(sys, "frozen", False) and hasattr(sys, '_MEIPASS'):
+            base_path = Path(sys._MEIPASS)
+        else:
+            base_path = Path(__file__).resolve().parents[2]
+        git_lfs_exe = base_path / "libs" / "git-lfs.exe"
+        return git_lfs_exe if git_lfs_exe.is_file() else None
+    except Exception as e:
+        logger.error(f"Error finding bundled git-lfs: {e}")
+        return None
 
 
 def setup_git_lfs_path() -> bool:
-    # ... (full function code)
-    pass
+    """Ensure git-lfs is in the system's PATH, preferring the bundled version."""
+    bundled_lfs = get_bundled_git_lfs_path()
+    if bundled_lfs:
+        lfs_dir = str(bundled_lfs.parent)
+        if lfs_dir not in os.environ.get('PATH', ''):
+            os.environ['PATH'] = f"{lfs_dir}{os.pathsep}{os.environ['PATH']}"
+            logger.info(
+                f"Temporarily added bundled Git LFS directory to PATH: {lfs_dir}")
+
+        try:
+            result = subprocess.run(
+                [str(bundled_lfs), "version"], capture_output=True, text=True, check=True, timeout=5
+            )
+            logger.info(f"Using bundled Git LFS: {result.stdout.strip()}")
+            return True  # If bundled LFS works, we are done.
+        except Exception as e:
+            logger.warning(
+                f"Bundled Git LFS was found but failed verification: {e}. Falling back to system LFS.")
+            # DO NOT return False here. Let the function continue to the fallback below.
+
+    # Fallback to checking for a system-wide installation
+    try:
+        result = subprocess.run(
+            ["git-lfs", "version"], capture_output=True, text=True, check=True, timeout=5
+        )
+        logger.info(f"Using system Git LFS: {result.stdout.strip()}")
+        return True
+    except Exception as e:
+        logger.error(f"FATAL: No Git LFS found on the system or bundled: {e}")
+        return False
 
 
 class GitRepository:
@@ -48,8 +84,19 @@ class GitRepository:
             self._configure_lfs()
 
     def _create_git_environment(self) -> Dict[str, str]:
-        # ... (full function code as provided before)
-        pass
+        git_env = os.environ.copy()
+        bundled_lfs = get_bundled_git_lfs_path()
+        if bundled_lfs:
+            lfs_dir = str(bundled_lfs.parent)
+            git_env["PATH"] = f"{lfs_dir}{os.pathsep}{git_env.get('PATH', '')}"
+            git_env["GIT_LFS_PATH"] = str(bundled_lfs)
+        allow_insecure = self.config_manager.config.security.get(
+            "allow_insecure_ssl", False)
+        if allow_insecure:
+            git_env["GIT_SSL_NO_VERIFY"] = "true"
+            logger.warning(
+                "GIT_SSL_NO_VERIFY is enabled. SSL verification is turned off.")
+        return git_env
 
     # --- Full, Robust Repository Initialization and Cleanup ---
 
@@ -136,6 +183,24 @@ class GitRepository:
         except Exception as e:
             logger.error(f"Failed to configure Git LFS: {e}", exc_info=True)
 
+    def _increment_revision(self, current_rev: str, rev_type: str, new_major_str: Optional[str] = None) -> str:
+        major, minor = 0, 0
+        if not current_rev:
+            current_rev = "0.0"
+        parts = current_rev.split('.')
+        try:
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+        except (ValueError, IndexError):
+            major, minor = 0, 0
+
+        if rev_type == 'major':
+            if new_major_str and new_major_str.isdigit():
+                return f"{int(new_major_str)}.0"
+            return f"{major + 1}.0"
+        else:
+            return f"{major}.{minor + 1}"
+
     # --- Public Service Methods ---
 
     def pull_latest_changes(self):
@@ -215,4 +280,137 @@ class GitRepository:
         full_path = self.repo_path / file_path
         return full_path.read_bytes() if full_path.exists() else None
 
-    # ... Other methods like get_file_history, list_files, etc. would be fully fleshed out here ...
+    def save_file(self, file_path: str, content: bytes):
+        """Saves raw byte content to a file in the repository."""
+        full_path = self.repo_path / file_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_bytes(content)
+
+    # In backend/app/services/git_service.py
+
+    def list_files(self) -> List[Dict[str, Any]]:
+        """Lists all relevant files tracked by Git based on configured file types."""
+        if not self.repo:
+            return []
+
+        # NEW: Get the allowed types from the config manager!
+        allowed_types = self.config_manager.config.allowed_file_types
+
+        tracked_files = self.repo.git.ls_files().splitlines()
+
+        files_data = []
+        for file_path_str in tracked_files:
+            # UPDATED: Use the configured list instead of a hardcoded one.
+            if not any(file_path_str.endswith(ext) for ext in allowed_types):
+                continue
+
+            full_path = self.repo_path / file_path_str
+            try:
+                stat_result = full_path.stat()
+                files_data.append({
+                    "filename": full_path.name,
+                    "path": file_path_str,
+                    "size": stat_result.st_size,
+                    "modified_at": datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc).isoformat()
+                })
+            except FileNotFoundError:
+                continue
+        return files_data
+
+    def get_file_history(self, file_path: str, limit: int = 50) -> List[Dict]:
+        if not self.repo:
+            return []
+        history = []
+        meta_path_str = f"{file_path}.meta.json"
+        try:
+            commits = self.repo.iter_commits(
+                paths=[file_path, meta_path_str], max_count=limit)
+            for c in commits:
+                revision = None
+                try:
+                    meta_blob = c.tree / meta_path_str
+                    meta_content = json.loads(
+                        meta_blob.data_stream.read().decode('utf-8'))
+                    revision = meta_content.get("revision")
+                except Exception:
+                    pass
+                history.append({
+                    "commit_hash": c.hexsha,
+                    "author_name": c.author.name if c.author else "Unknown",
+                    "date": datetime.fromtimestamp(c.committed_date, tz=timezone.utc).isoformat(),
+                    "message": c.message.strip(),
+                    "revision": revision
+                })
+            return history
+        except git.exc.GitCommandError as e:
+            logger.error(
+                f"Git command failed while getting history for {file_path}: {e}")
+            return []
+
+    def get_all_users_from_history(self) -> List[str]:
+        if not self.repo:
+            return []
+        try:
+            authors = {c.author.name for c in self.repo.iter_commits()
+                       if c.author}
+            return sorted(list(authors))
+        except Exception as e:
+            logger.error(
+                f"Could not retrieve user list from repo history: {e}")
+            return []
+
+    def checkin_file(self, file_path: str, file_content: bytes, commit_message: str, rev_type: str, author_name: str, new_major_rev: Optional[str]) -> bool:
+        """High-level service method to handle the logic of a file check-in."""
+        # 1. Save the new file content
+        self.save_file(file_path, file_content)
+
+        # 2. Read, update, and write the metadata file
+        meta_path = self.repo_path / f"{file_path}.meta.json"
+        meta_content = {}
+        if meta_path.exists():
+            try:
+                meta_content = json.loads(meta_path.read_text())
+            except json.JSONDecodeError:
+                logger.warning(f"Could not parse metadata for {file_path}")
+
+        current_rev = meta_content.get("revision", "0.0")
+        new_rev = self._increment_revision(
+            current_rev, rev_type, new_major_rev)
+        meta_content["revision"] = new_rev
+        meta_path.write_text(json.dumps(meta_content, indent=2))
+
+        # 3. Commit and push everything
+        final_commit_message = f"REV {new_rev}: {commit_message}"
+        files_to_commit = [file_path, str(
+            meta_path.relative_to(self.repo_path))]
+
+        return self.commit_and_push(files_to_commit, final_commit_message, author_name)
+
+    def revert_local_file_changes(self, file_path: str):
+        """Reverts a file in the working directory to its last committed state (HEAD)."""
+        if not self.repo:
+            return
+        try:
+            with self.lock_manager, self.repo.git.custom_environment(**self.git_env):
+                self.repo.git.checkout('HEAD', '--', file_path)
+            logger.info(f"Reverted local changes for: {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to revert local file {file_path}: {e}")
+
+    def delete_file_and_metadata(self, file_path: str) -> List[str]:
+        """Deletes a file and its associated metadata file, returning a list of paths to be committed."""
+        absolute_file_path = self.repo_path / file_path
+        meta_path = self.repo_path / f"{file_path}.meta.json"
+
+        files_to_remove_for_commit = []
+
+        if absolute_file_path.exists():
+            absolute_file_path.unlink()
+            files_to_remove_for_commit.append(file_path)
+
+        if meta_path.exists():
+            meta_path.unlink()
+            files_to_remove_for_commit.append(
+                str(meta_path.relative_to(self.repo_path)))
+
+        return files_to_remove_for_commit

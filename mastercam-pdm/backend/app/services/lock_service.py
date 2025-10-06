@@ -25,18 +25,119 @@ class ImprovedFileLockManager:
         self.lock_file = None
         self.max_lock_age_seconds = 300  # 5 minutes
 
-    # ... [Copy the full methods for ImprovedFileLockManager here: __enter__, __exit__, _is_stale_lock, etc.]
-    # For brevity, I am using a placeholder.
+    def force_break_lock(self) -> bool:
+        """Forcefully removes a lock file, terminating the process holding it if possible."""
+        for attempt in range(3):
+            try:
+                self._kill_lock_holder()
+                if self.lock_file:
+                    self.lock_file.close()
+                    self.lock_file = None
+                if self.lock_file_path.exists():
+                    self.lock_file_path.unlink()
+                logger.info(f"Force-broke lock file at {self.lock_file_path}")
+                return True
+            except PermissionError as e:
+                if attempt < 2:
+                    time.sleep(0.5)
+                    continue
+                logger.error(
+                    f"Failed to force-break lock after 3 attempts: {e}")
+                return False
+            except Exception as e:
+                logger.error(f"Unexpected error breaking lock: {e}")
+                return False
+        return not self.lock_file_path.exists()
+
+    def _kill_lock_holder(self):
+        """Finds the process ID from the lock file and terminates it."""
+        if not self.lock_file_path.exists():
+            return
+        try:
+            lock_data = json.loads(self.lock_file_path.read_text())
+            pid = lock_data.get("pid")
+            if pid and psutil.pid_exists(pid):
+                proc = psutil.Process(pid)
+                proc.terminate()
+                proc.wait(timeout=2)
+                logger.info(f"Terminated stale lock holder PID {pid}")
+        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+            pass  # Process already gone
+        except Exception as e:
+            logger.debug(f"Could not kill lock holder: {e}")
+
     def __enter__(self):
-        logger.debug(
-            f"Attempting to acquire repository lock at {self.lock_file_path}...")
-        # In your file, paste the full, robust __enter__ logic from the original script.
-        return self
+        """Acquires the lock, waiting if necessary and breaking stale locks."""
+        timeout = 15  # seconds
+        start_time = time.time()
+        self.lock_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        while True:
+            if time.time() - start_time > timeout:
+                raise TimeoutError(
+                    f"Could not acquire repository lock after {timeout}s.")
+
+            try:
+                # 'x' mode opens for exclusive creation, failing if the file already exists
+                self.lock_file = open(self.lock_file_path, 'x')
+                lock_info = {
+                    "pid": os.getpid(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "hostname": socket.gethostname()
+                }
+                self.lock_file.write(json.dumps(lock_info))
+                self.lock_file.flush()
+                logger.debug(
+                    f"Acquired repository lock: {self.lock_file_path}")
+                return self
+            except FileExistsError:
+                if self._is_stale_lock():
+                    logger.warning("Detected stale lock, forcing break.")
+                    self.force_break_lock()
+                    continue  # Retry immediately
+                time.sleep(0.2)
+            except Exception as e:
+                logger.error(f"Unexpected error acquiring lock: {e}")
+                raise
+
+    def _is_stale_lock(self) -> bool:
+        """Checks if a lock is stale by age or if the owning process is dead."""
+        try:
+            if not self.lock_file_path.exists():
+                return False
+
+            # Check by age
+            file_age = time.time() - self.lock_file_path.stat().st_mtime
+            if file_age > self.max_lock_age_seconds:
+                logger.warning(
+                    f"Lock is stale (age: {file_age:.0f}s > max: {self.max_lock_age_seconds}s)")
+                return True
+
+            # Check if owning process is gone
+            lock_data = json.loads(self.lock_file_path.read_text())
+            pid = lock_data.get("pid")
+            if pid and not psutil.pid_exists(pid):
+                logger.warning(
+                    f"Lock is stale (owning PID {pid} no longer exists)")
+                return True
+        except (json.JSONDecodeError, FileNotFoundError, psutil.Error):
+            # If we can't read the file or check the process, assume it might be stale
+            return True
+        except Exception:
+            return False
+        return False
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        logger.debug(f"Releasing repository lock at {self.lock_file_path}...")
-        # In your file, paste the full __exit__ logic from the original script.
-        pass
+        """Releases the lock."""
+        try:
+            if self.lock_file:
+                self.lock_file.close()
+                self.lock_file = None
+            if self.lock_file_path.exists():
+                self.lock_file_path.unlink()
+            logger.debug(f"Released repository lock: {self.lock_file_path}")
+        except OSError as e:
+            logger.warning(f"Could not remove lock file on exit: {e}")
 
 
 class MetadataManager:
@@ -86,7 +187,6 @@ class MetadataManager:
             return json.loads(lock_file.read_text())
         except (json.JSONDecodeError, FileNotFoundError):
             logger.warning(f"Could not read or parse lock file: {lock_file}")
-            # Clean up corrupted/empty lock file
             lock_file.unlink(missing_ok=True)
             return None
 
@@ -98,12 +198,14 @@ class MetadataManager:
 
         now_utc = datetime.now(timezone.utc)
         for lock_file in self.locks_dir.glob('*.lock'):
-            # Re-use get_lock_info to handle bad files
-            lock_info = self.get_lock_info(lock_file.stem)
-            if lock_info:
+            try:
+                lock_info = json.loads(lock_file.read_text())
                 locked_at_dt = datetime.fromisoformat(
                     lock_info["timestamp"].replace('Z', '+00:00'))
                 duration = (now_utc - locked_at_dt).total_seconds()
                 lock_info['duration_seconds'] = duration
                 active_locks.append(lock_info)
+            except (json.JSONDecodeError, KeyError):
+                logger.warning(
+                    f"Corrupted lock file found and skipped: {lock_file.name}")
         return active_locks
