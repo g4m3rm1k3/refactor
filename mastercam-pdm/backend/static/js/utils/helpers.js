@@ -8,6 +8,25 @@ export function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+export function showNotification(message, type = "info") {
+  console.log(`Notification (${type}): ${message}`);
+
+  // This is a basic implementation.
+  // You will need to add your own logic here to show a
+  // notification element on the screen.
+  const notificationElement = document.getElementById("notification-banner");
+  if (notificationElement) {
+    notificationElement.textContent = message;
+    notificationElement.className = `notification ${type}`; // e.g., 'notification success'
+    notificationElement.style.display = "block";
+
+    // Hide the notification after 3 seconds
+    setTimeout(() => {
+      notificationElement.style.display = "none";
+    }, 3000);
+  }
+}
+
 export function debounce(func, delay) {
   let timeout;
   return function (...args) {

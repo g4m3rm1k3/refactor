@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.api import dependencies; print(''dependencies.py imports OK'')\")",
+      "Bash(python -c \"from app.core import security; print(''security.py imports OK'')\")",
+      "Bash(pip install:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

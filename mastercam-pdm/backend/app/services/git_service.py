@@ -280,6 +280,32 @@ class GitRepository:
         full_path = self.repo_path / file_path
         return full_path.read_bytes() if full_path.exists() else None
 
+    def get_file_content_at_commit(self, file_path: str, commit_hash: str) -> Optional[bytes]:
+        """
+        Retrieves file content from a specific commit.
+
+        Args:
+            file_path: Relative path to the file in the repository
+            commit_hash: Git commit hash to retrieve the file from
+
+        Returns:
+            File contents as bytes, or None if file doesn't exist at that commit
+        """
+        if not self.repo:
+            return None
+        try:
+            commit = self.repo.commit(commit_hash)
+            try:
+                blob = commit.tree / file_path
+                return blob.data_stream.read()
+            except KeyError:
+                # File doesn't exist in this commit
+                logger.warning(f"File {file_path} not found in commit {commit_hash[:7]}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get file content at commit {commit_hash[:7]}: {e}")
+            return None
+
     def save_file(self, file_path: str, content: bytes):
         """Saves raw byte content to a file in the repository."""
         full_path = self.repo_path / file_path
@@ -357,6 +383,32 @@ class GitRepository:
         except Exception as e:
             logger.error(
                 f"Could not retrieve user list from repo history: {e}")
+            return []
+
+    def get_recent_commits(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves recent commits from the repository for activity feed.
+
+        Args:
+            limit: Maximum number of commits to retrieve
+
+        Returns:
+            List of commit dictionaries with hash, author, timestamp, and message
+        """
+        if not self.repo:
+            return []
+        try:
+            commits = []
+            for commit in self.repo.iter_commits(max_count=limit):
+                commits.append({
+                    'hash': commit.hexsha,
+                    'author': commit.author.name if commit.author else 'Unknown',
+                    'timestamp': datetime.fromtimestamp(commit.committed_date, tz=timezone.utc).isoformat(),
+                    'message': commit.message.strip()
+                })
+            return commits
+        except Exception as e:
+            logger.error(f"Failed to retrieve recent commits: {e}", exc_info=True)
             return []
 
     def checkin_file(self, file_path: str, file_content: bytes, commit_message: str, rev_type: str, author_name: str, new_major_rev: Optional[str]) -> bool:

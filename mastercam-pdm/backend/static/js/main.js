@@ -1,13 +1,15 @@
 // backend/static/js/main.js
 
 import { getConfig, getFiles } from "./api/service.js";
-import { setState, subscribe } from "./state/store.js";
+import { setState, subscribe, getState } from "./state/store.js";
 import { createFileCard } from "./components/FileCard.js";
 import { setupConfigPanel } from "./components/ConfigPanel.js";
 import { connectWebSocket } from "./services/websocket.js";
 import { showAuthDialog } from "./components/LoginModal.js";
 import { checkSession, checkPasswordExists } from "./services/auth.js";
 import { showDashboardDialog } from "./components/DashboardModal.js";
+import { showNewUploadDialog } from "./components/NewUploadModal.js";
+import { showNotification } from "./utils/helpers.js";
 
 const fileListEl = document.getElementById("fileList");
 let appState = {}; // Keep a local copy of state to compare old vs. new
@@ -23,6 +25,27 @@ function render(state) {
   const statusIndicators = document.getElementById("status-indicators");
   if (statusIndicators) {
     statusIndicators.style.display = state.isAuthenticated ? "flex" : "none";
+  }
+
+  // --- Admin Mode Toggle Button ---
+  const adminActionsContainer = document.getElementById("adminActionsContainer");
+  if (adminActionsContainer && state.isAdmin && state.isAuthenticated) {
+    // Show admin mode toggle if user is admin
+    if (!document.getElementById("adminModeToggle")) {
+      adminActionsContainer.innerHTML = `
+        <button
+          id="adminModeToggle"
+          class="btn btn-secondary !px-3"
+          title="Toggle Admin Mode"
+        >
+          <i class="fa-solid fa-shield-halved"></i>
+        </button>
+      `;
+      // Wire up the admin toggle button
+      document.getElementById("adminModeToggle")?.addEventListener("click", toggleAdminMode);
+    }
+  } else if (adminActionsContainer) {
+    adminActionsContainer.innerHTML = "";
   }
 
   // --- File List Rendering ---
@@ -48,7 +71,7 @@ function render(state) {
     const filesContainer = groupDetails.querySelector(".space-y-4");
     for (const file of state.groupedFiles[groupName]) {
       filesContainer.appendChild(
-        createFileCard(file, state.currentUser, state.isAdmin)
+        createFileCard(file, state.currentUser, state.isAdminModeEnabled || false)
       );
     }
     fileListEl.appendChild(groupDetails);
@@ -73,6 +96,49 @@ function toggleDarkMode() {
   localStorage.theme = document.documentElement.classList.contains("dark")
     ? "dark"
     : "light";
+}
+
+function toggleAdminMode() {
+  const state = getState();
+  const newAdminModeState = !state.isAdminModeEnabled;
+
+  setState({ isAdminModeEnabled: newAdminModeState });
+
+  // Update button appearance
+  const toggleBtn = document.getElementById("adminModeToggle");
+  if (toggleBtn) {
+    if (newAdminModeState) {
+      toggleBtn.classList.remove("btn-secondary");
+      toggleBtn.classList.add("btn-primary");
+      toggleBtn.classList.add("ring-2", "ring-amber-400");
+    } else {
+      toggleBtn.classList.add("btn-secondary");
+      toggleBtn.classList.remove("btn-primary");
+      toggleBtn.classList.remove("ring-2", "ring-amber-400");
+    }
+  }
+
+  showNotification(
+    newAdminModeState ? "Admin mode enabled" : "Admin mode disabled",
+    newAdminModeState ? "warning" : "info"
+  );
+
+  // Re-render file cards with new admin mode state
+  const fileGroups = Object.keys(state.groupedFiles || {});
+  for (const groupName of fileGroups) {
+    const groupDetails = Array.from(fileListEl.querySelectorAll("details")).find(
+      (el) => el.querySelector("summary").textContent.includes(groupName)
+    );
+    if (groupDetails) {
+      const filesContainer = groupDetails.querySelector(".space-y-4");
+      filesContainer.innerHTML = "";
+      for (const file of state.groupedFiles[groupName]) {
+        filesContainer.appendChild(
+          createFileCard(file, state.currentUser, newAdminModeState)
+        );
+      }
+    }
+  }
 }
 
 // --- Main Application Logic ---
@@ -132,6 +198,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("dashboardBtn")
     ?.addEventListener("click", showDashboardDialog);
+  document
+    .getElementById("newFileBtn")
+    ?.addEventListener("click", showNewUploadDialog);
   document
     .getElementById("darkModeBtn")
     ?.addEventListener("click", toggleDarkMode);

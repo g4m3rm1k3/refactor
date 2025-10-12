@@ -240,7 +240,7 @@
               />
               <label
                 for="uploadTypeFile"
-                class="block p-3 text-center rounded-lg border-2 cursor-pointer peer-checked:border-accent peer-checked:text-accent"
+                class="block p-3 text-center rounded-lg border-2 border-gray-300 dark:border-gray-600 cursor-pointer peer-checked:border-accent peer-checked:text-accent hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
               >
                 <i class="fa-solid fa-file-arrow-up text-xl mb-1"></i>
                 <div class="font-semibold">Upload File</div>
@@ -256,22 +256,93 @@
               />
               <label
                 for="uploadTypeLink"
-                class="block p-3 text-center rounded-lg border-2 cursor-pointer peer-checked:border-accent peer-checked:text-accent"
+                class="block p-3 text-center rounded-lg border-2 border-gray-300 dark:border-gray-600 cursor-pointer peer-checked:border-accent peer-checked:text-accent hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
               >
                 <i class="fa-solid fa-link text-xl mb-1"></i>
                 <div class="font-semibold">Create Link</div>
               </label>
             </div>
           </div>
+          <div id="fileUploadContainer">
+            <label for="newFileUpload" class="block text-sm font-medium"
+              >Mastercam File <span class="text-red-500">*</span></label
+            >
+            <input
+              type="file"
+              id="newFileUpload"
+              name="file"
+              accept=".mcam,.vnc,.emcam"
+              class="mt-1 block w-full text-sm text-gray-500 dark:text-gray-400"
+            />
+          </div>
+          <div id="linkCreateContainer" class="hidden space-y-4">
+            <div>
+              <label for="newLinkFilename" class="block text-sm font-medium"
+                >New Filename for Link <span class="text-red-500">*</span></label
+              >
+              <input
+                type="text"
+                id="newLinkFilename"
+                name="new_link_filename"
+                placeholder="e.g., 1234567_ABC123"
+                class="input-field"
+              />
+            </div>
+            <div>
+              <label for="linkToMaster" class="block text-sm font-medium"
+                >Link to Master File <span class="text-red-500">*</span></label
+              >
+              <input
+                type="text"
+                id="linkToMaster"
+                name="link_to_master"
+                list="masterFileList"
+                placeholder="Start typing to see available files..."
+                class="input-field"
+              />
+            </div>
+          </div>
+          <div>
+            <label for="newFileDescription" class="block text-sm font-medium"
+              >Description <span class="text-red-500">*</span></label
+            >
+            <input
+              type="text"
+              id="newFileDescription"
+              name="description"
+              placeholder="Part name per title block"
+              required
+              class="input-field"
+            />
+          </div>
+          <div>
+            <label for="newFileRev" class="block text-sm font-medium"
+              >Initial Revision <span class="text-red-500">*</span></label
+            >
+            <input
+              type="text"
+              id="newFileRev"
+              name="rev"
+              placeholder="1.0"
+              required
+              pattern="^\d+\.\d+$"
+              class="input-field"
+            />
+          </div>
           <div class="flex justify-end space-x-3 pt-4">
             <button type="button" class="btn btn-secondary" data-action="close">
               Cancel
             </button>
-            <button type="submit" class="btn btn-primary">Create</button>
+            <button type="submit" class="btn btn-primary">
+              <span id="submitBtnText">Create</span>
+              <i id="submitSpinner" class="fa-solid fa-spinner fa-spin ml-2 hidden"></i>
+            </button>
           </div>
         </form>
       </div>
     </template>
+
+    <datalist id="masterFileList"></datalist>
 
     <template id="template-dashboard-modal">
       <div

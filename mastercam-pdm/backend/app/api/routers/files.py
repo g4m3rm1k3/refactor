@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File, Response
 from typing import Dict, List, Optional
+import os
+import logging
+import json
 
 # Import our schemas, dependencies, and services
 from app.models import schemas
 from app.api.dependencies import get_git_repo, get_lock_manager, get_current_user
 from app.services.git_service import GitRepository
 from app.services.lock_service import MetadataManager
-import logging
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -306,3 +307,196 @@ async def download_file_version(
     base, ext = os.path.splitext(filename)
     download_filename = f"{base}_rev_{commit_hash[:7]}{ext}"
     return Response(content, media_type='application/octet-stream', headers={'Content-Disposition': f'attachment; filename="{download_filename}"'})
+
+
+@router.post("/new_upload")
+async def new_upload(
+    user: str = Form(...),
+    description: str = Form(...),
+    rev: str = Form(...),
+    is_link_creation: str = Form("false"),
+    new_link_filename: Optional[str] = Form(None),
+    link_to_master: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    git_repo: GitRepository = Depends(get_git_repo),
+    lock_manager: MetadataManager = Depends(get_lock_manager),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Handle both file uploads and link creation through a single endpoint.
+
+    For file uploads:
+        - Validates filename format
+        - Checks file type/magic numbers
+        - Creates file and metadata
+        - Commits to Git
+
+    For link creation:
+        - Validates link name format
+        - Verifies master file exists
+        - Creates .link file and metadata
+        - Commits to Git
+    """
+    from app.utils.validators import (
+        validate_filename_format,
+        validate_link_filename_format,
+        is_valid_file_type
+    )
+    from datetime import datetime, timezone
+    from fastapi.responses import JSONResponse
+
+    if user != current_user.get('sub'):
+        raise HTTPException(status_code=403, detail="User mismatch")
+
+    if not git_repo or not lock_manager:
+        raise HTTPException(status_code=500, detail="Repository not available")
+
+    # Convert string to boolean
+    is_link = is_link_creation.lower() in ('true', '1', 'yes')
+
+    if is_link:
+        # --- LINK CREATION LOGIC ---
+        logger.info(f"Creating link: {new_link_filename} -> {link_to_master}")
+
+        if not new_link_filename or not link_to_master:
+            raise HTTPException(
+                status_code=400,
+                detail="Must provide both a link name and a master file to link to."
+            )
+
+        # Validate the new link filename format
+        is_valid_format, error_message = validate_link_filename_format(new_link_filename)
+        if not is_valid_format:
+            raise HTTPException(status_code=400, detail=error_message)
+
+        # Check if file or link already exists
+        if git_repo.find_file_path(new_link_filename) or git_repo.find_file_path(f"{new_link_filename}.link"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"File or link '{new_link_filename}' already exists."
+            )
+
+        # Verify the master file exists
+        master_file_path = git_repo.find_file_path(link_to_master)
+        if not master_file_path:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Master file '{link_to_master}' not found."
+            )
+
+        try:
+            # Create the .link file
+            link_data = {"master_file": link_to_master}
+            link_filepath_str = f"{new_link_filename}.link"
+            link_full_path = git_repo.repo_path / link_filepath_str
+            link_full_path.write_text(json.dumps(link_data, indent=2))
+
+            # Create the metadata file for the link
+            meta_filename_str = f"{new_link_filename}.meta.json"
+            meta_content = {
+                "description": description.upper(),
+                "revision": rev,
+                "created_by": user,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            meta_full_path = git_repo.repo_path / meta_filename_str
+            meta_full_path.write_text(json.dumps(meta_content, indent=2))
+
+            # Commit both files
+            commit_message = f"LINK: Create '{new_link_filename}' -> '{link_to_master}' by {user}"
+            files_to_commit = [link_filepath_str, meta_filename_str]
+            success = git_repo.commit_and_push(
+                files_to_commit, commit_message, user
+            )
+
+            if success:
+                return JSONResponse({
+                    "status": "success",
+                    "message": f"Link '{new_link_filename}' created successfully, pointing to '{link_to_master}'."
+                })
+            else:
+                raise HTTPException(
+                    status_code=500, detail="Failed to commit new link to repository."
+                )
+
+        except Exception as e:
+            logger.error(f"Error creating link: {e}", exc_info=True)
+            # Clean up on error
+            (git_repo.repo_path / link_filepath_str).unlink(missing_ok=True)
+            (git_repo.repo_path / meta_filename_str).unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=500, detail=f"Failed to create link: {str(e)}"
+            )
+
+    else:
+        # --- FILE UPLOAD LOGIC ---
+        logger.info(f"Uploading new file: {file.filename if file else 'None'}")
+
+        if not file or not file.filename:
+            raise HTTPException(
+                status_code=400, detail="A file upload is required for file creation."
+            )
+
+        # Validate file format
+        is_valid_format, error_message = validate_filename_format(file.filename)
+        if not is_valid_format:
+            raise HTTPException(status_code=400, detail=error_message)
+
+        # Check if file already exists
+        if git_repo.find_file_path(file.filename):
+            raise HTTPException(
+                status_code=409, detail=f"File '{file.filename}' already exists."
+            )
+
+        # Validate file type
+        if not await is_valid_file_type(file):
+            from pathlib import Path
+            file_ext = Path(file.filename).suffix.lower()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. The uploaded file is not a valid {file_ext} file."
+            )
+
+        try:
+            # Save the file content
+            content = await file.read()
+            git_repo.save_file(file.filename, content)
+
+            # Create metadata file
+            meta_filename = f"{file.filename}.meta.json"
+            meta_content = {
+                "description": description.upper(),
+                "revision": rev,
+                "created_by": user,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            meta_full_path = git_repo.repo_path / meta_filename
+            meta_full_path.write_text(json.dumps(meta_content, indent=2))
+
+            # Commit both files
+            commit_message = f"NEW FILE: Upload '{file.filename}' (Rev {rev}) by {user}"
+            files_to_commit = [file.filename, meta_filename]
+            success = git_repo.commit_and_push(
+                files_to_commit, commit_message, user
+            )
+
+            if success:
+                return JSONResponse({
+                    "status": "success",
+                    "message": f"File '{file.filename}' uploaded successfully."
+                })
+            else:
+                raise HTTPException(
+                    status_code=500, detail="Failed to commit new file to repository."
+                )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error uploading file: {e}", exc_info=True)
+            # Clean up on error
+            (git_repo.repo_path / file.filename).unlink(missing_ok=True)
+            (git_repo.repo_path / meta_filename).unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=500, detail=f"Failed to upload file: {str(e)}"
+            )

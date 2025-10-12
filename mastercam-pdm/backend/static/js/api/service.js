@@ -105,3 +105,12 @@ export async function overrideLock(filename, adminUser) {
   });
   return handleResponse(response);
 }
+
+export async function uploadNewFile(formData) {
+  const response = await fetch(`${BASE_URL}/files/new_upload`, {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+  return handleResponse(response);
+}
