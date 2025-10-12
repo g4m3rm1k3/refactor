@@ -16,6 +16,8 @@ class FileInfo(BaseModel):
         None, description="Username of the user who has the file locked")
     locked_at: Optional[str] = Field(
         None, description="ISO timestamp when the file was locked")
+    checkout_message: Optional[str] = Field(
+        "", description="Message explaining why the file is checked out")
     size: Optional[int] = Field(None, description="File size in bytes")
     modified_at: Optional[str] = Field(
         None, description="ISO timestamp of last modification")
@@ -27,6 +29,10 @@ class FileInfo(BaseModel):
         False, description="True if this is a linked/virtual file")
     master_file: Optional[str] = Field(
         None, description="The master file this link points to")
+    group: Optional[str] = Field(
+        None, description="Main group identifier (first 2 digits, e.g., '12XXXXX')")
+    subgroup: Optional[str] = Field(
+        None, description="Subgroup identifier (first 7 digits, e.g., '1234567')")
 
 
 class CheckoutInfo(BaseModel):
@@ -47,6 +53,7 @@ class DashboardStats(BaseModel):
 
 class CheckoutRequest(BaseModel):
     user: str = Field(..., description="Username requesting the checkout")
+    message: Optional[str] = Field("", description="Optional message describing why checking out (e.g., 'Updating dimensions')")
 
 
 class AdminOverrideRequest(BaseModel):

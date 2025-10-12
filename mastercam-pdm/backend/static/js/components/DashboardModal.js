@@ -3,33 +3,62 @@
 import { Modal } from "./Modal.js";
 import { getDashboardStats, getActivityFeed } from "../api/service.js";
 import { formatDate, formatDuration } from "../utils/helpers.js";
+import { getState } from "../state/store.js";
+
+let currentModal = null;
+let currentOffset = 0;
+let selectedUser = "all";
+let allActivities = [];
 
 export async function showDashboardDialog() {
   const template = document.getElementById("template-dashboard-modal");
   const content = template.content.cloneNode(true);
-  const modal = new Modal(content);
-  modal.show();
+  currentModal = new Modal(content);
+  currentModal.show();
+
+  // Reset state
+  currentOffset = 0;
+  selectedUser = "all";
+  allActivities = [];
 
   const dashboardContentEl =
-    modal.modalElement.querySelector("#dashboardContent");
+    currentModal.modalElement.querySelector("#dashboardContent");
   dashboardContentEl.innerHTML = `<div class="flex justify-center items-center w-full h-full"><i class="fa-solid fa-spinner fa-spin text-4xl text-accent"></i></div>`;
 
+  await loadDashboardData(dashboardContentEl);
+}
+
+async function loadDashboardData(containerEl) {
   try {
     // Fetch both stats and activity feed
     const [statsData, activityData] = await Promise.all([
       getDashboardStats(),
-      getActivityFeed(20, 0) // Get last 20 activities
+      getActivityFeed(100, 0) // Get more activities for filtering
     ]);
 
-    const checkoutsHtml = renderActiveCheckouts(statsData.active_checkouts);
-    const activityHtml = renderActivityFeed(activityData.activities);
+    allActivities = activityData.activities || [];
 
-    dashboardContentEl.innerHTML = `
+    const checkoutsHtml = renderActiveCheckouts(statsData.active_checkouts);
+    const activityHtml = renderActivityFeed();
+
+    containerEl.innerHTML = `
       <div class="md:w-1/2 flex flex-col">${checkoutsHtml}</div>
       <div class="md:w-1/2 flex flex-col mt-6 md:mt-0 md:border-l md:pl-6 border-gray-200 dark:border-gray-700">${activityHtml}</div>
     `;
+
+    // Wire up event handlers
+    const userFilterSelect = containerEl.querySelector("#userFilter");
+    const showMoreBtn = containerEl.querySelector("#showMoreBtn");
+
+    if (userFilterSelect) {
+      userFilterSelect.addEventListener("change", handleUserFilterChange);
+    }
+
+    if (showMoreBtn) {
+      showMoreBtn.addEventListener("click", handleShowMore);
+    }
   } catch (error) {
-    dashboardContentEl.innerHTML = `<p class="text-red-500">Error loading dashboard: ${error.message}</p>`;
+    containerEl.innerHTML = `<p class="text-red-500">Error loading dashboard: ${error.message}</p>`;
   }
 }
 
@@ -69,11 +98,37 @@ function renderActiveCheckouts(checkouts) {
   `;
 }
 
-function renderActivityFeed(activities) {
-  if (!activities || activities.length === 0) {
+function renderActivityFeed() {
+  // Get unique users for filter dropdown
+  const uniqueUsers = [...new Set(allActivities.map(a => a.user))].sort();
+
+  // Filter activities by selected user
+  let filtered = allActivities;
+  if (selectedUser !== "all") {
+    filtered = allActivities.filter(a => a.user === selectedUser);
+  }
+
+  // Paginate - show currentOffset to currentOffset + 20
+  const pageSize = 20;
+  const displayedActivities = filtered.slice(0, currentOffset + pageSize);
+  const hasMore = displayedActivities.length < filtered.length;
+
+  // Build user filter dropdown
+  const userFilterHtml = `
+    <div class="mb-4 flex items-center space-x-2">
+      <label for="userFilter" class="text-sm font-medium">Filter by user:</label>
+      <select id="userFilter" class="input-field py-1 px-2 text-sm">
+        <option value="all">All Users</option>
+        ${uniqueUsers.map(user => `<option value="${user}" ${user === selectedUser ? 'selected' : ''}>${user}</option>`).join('')}
+      </select>
+    </div>
+  `;
+
+  if (displayedActivities.length === 0) {
     return `
       <h4 class="text-lg font-semibold mb-4">Recent Activity</h4>
-      <p class="text-gray-500 text-sm">No recent activity.</p>
+      ${userFilterHtml}
+      <p class="text-gray-500 text-sm">No activity found.</p>
     `;
   }
 
@@ -86,7 +141,7 @@ function renderActivityFeed(activities) {
     commit: { icon: "fa-code-commit", color: "text-gray-500" },
   };
 
-  const items = activities
+  const items = displayedActivities
     .map((activity) => {
       const eventConfig = eventIcons[activity.event_type] || eventIcons.commit;
       const timeAgo = formatDate(activity.timestamp);
@@ -106,10 +161,65 @@ function renderActivityFeed(activities) {
     })
     .join("");
 
+  const showMoreBtn = hasMore ? `
+    <button id="showMoreBtn" class="btn btn-secondary w-full mt-3">
+      <i class="fa-solid fa-chevron-down mr-2"></i>Show More (${filtered.length - displayedActivities.length} remaining)
+    </button>
+  ` : '';
+
   return `
     <h4 class="text-lg font-semibold mb-4 flex-shrink-0">Recent Activity</h4>
-    <div class="flex-grow overflow-y-auto space-y-1">
+    ${userFilterHtml}
+    <div id="activityList" class="flex-grow overflow-y-auto space-y-1">
       ${items}
     </div>
+    ${showMoreBtn}
   `;
+}
+
+function handleUserFilterChange(event) {
+  selectedUser = event.target.value;
+  currentOffset = 0; // Reset pagination when filter changes
+
+  // Re-render activity feed
+  const containerEl = currentModal.modalElement.querySelector("#dashboardContent");
+  const activityContainer = containerEl.querySelector(".md\\:w-1\\/2:last-child");
+  if (activityContainer) {
+    activityContainer.innerHTML = renderActivityFeed();
+
+    // Re-wire event handlers
+    const userFilterSelect = activityContainer.querySelector("#userFilter");
+    const showMoreBtn = activityContainer.querySelector("#showMoreBtn");
+
+    if (userFilterSelect) {
+      userFilterSelect.addEventListener("change", handleUserFilterChange);
+    }
+
+    if (showMoreBtn) {
+      showMoreBtn.addEventListener("click", handleShowMore);
+    }
+  }
+}
+
+function handleShowMore() {
+  currentOffset += 20; // Increment offset
+
+  // Re-render activity feed
+  const containerEl = currentModal.modalElement.querySelector("#dashboardContent");
+  const activityContainer = containerEl.querySelector(".md\\:w-1\\/2:last-child");
+  if (activityContainer) {
+    activityContainer.innerHTML = renderActivityFeed();
+
+    // Re-wire event handlers
+    const userFilterSelect = activityContainer.querySelector("#userFilter");
+    const showMoreBtn = activityContainer.querySelector("#showMoreBtn");
+
+    if (userFilterSelect) {
+      userFilterSelect.addEventListener("change", handleUserFilterChange);
+    }
+
+    if (showMoreBtn) {
+      showMoreBtn.addEventListener("click", handleShowMore);
+    }
+  }
 }

@@ -157,8 +157,18 @@ class MetadataManager:
         sanitized = file_path_str.replace(os.path.sep, '_').replace('.', '_')
         return self.locks_dir / f"{sanitized}.lock"
 
-    def create_lock(self, file_path: str, user: str, force: bool = False) -> Optional[Path]:
-        """Creates a lock file for a user, indicating a checkout."""
+    def create_lock(self, file_path: str, user: str, message: str = "", force: bool = False) -> Optional[Path]:
+        """Creates a lock file for a user, indicating a checkout.
+
+        Args:
+            file_path: Path to the file being locked
+            user: Username of the person checking out
+            message: Optional message describing why they're checking out (e.g., "Updating dimensions")
+            force: Whether to force creation even if already locked
+
+        Returns:
+            Path to the lock file if successful, None if already locked
+        """
         lock_file = self._get_lock_file_path(file_path)
         if lock_file.exists() and not force:
             logger.warning(
@@ -168,7 +178,8 @@ class MetadataManager:
         lock_data = {
             "file": file_path,
             "user": user,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": message  # Store the checkout message
         }
         lock_file.write_text(json.dumps(lock_data, indent=2))
         return lock_file

@@ -114,3 +114,21 @@ export async function uploadNewFile(formData) {
   });
   return handleResponse(response);
 }
+
+export async function checkinFile(filename, file, commitMessage, user, revType = "minor", newMajorRev = null) {
+  const formData = new FormData();
+  formData.append("user", user);
+  formData.append("file", file);
+  formData.append("commit_message", commitMessage);
+  formData.append("rev_type", revType);
+  if (newMajorRev) {
+    formData.append("new_major_rev", newMajorRev);
+  }
+
+  const response = await fetch(`${BASE_URL}/files/${filename}/checkin`, {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+  return handleResponse(response);
+}

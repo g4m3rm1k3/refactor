@@ -12,6 +12,7 @@ export function showAuthDialog(username, hasPassword) {
 
     const loginForm = modal.modalElement.querySelector("#loginForm");
     const setupForm = modal.modalElement.querySelector("#setupPasswordForm");
+    const switchToLoginBtn = modal.modalElement.querySelector("#switchToLoginBtn");
 
     const handleSuccess = () => {
       modal.close();
@@ -22,6 +23,14 @@ export function showAuthDialog(username, hasPassword) {
       alert(`Error: ${err.message}`);
       resolve(false); // Signal that login failed
     };
+
+    // Wire up "Switch to Login" button
+    if (switchToLoginBtn) {
+      switchToLoginBtn.addEventListener("click", () => {
+        setupForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+      });
+    }
 
     if (hasPassword) {
       // --- LOG IN EXISTING USER ---
@@ -55,9 +64,25 @@ export function showAuthDialog(username, hasPassword) {
 
       setupForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+
+        // Validate passwords match
         if (passwordInput.value !== confirmInput.value) {
+          confirmInput.classList.add("border-red-500");
           return alert("Passwords do not match.");
         }
+
+        // Validate password length
+        if (passwordInput.value.length < 6) {
+          passwordInput.classList.add("border-red-500");
+          return alert("Password must be at least 6 characters long.");
+        }
+
+        // Validate token is provided
+        if (!tokenInput.value.trim()) {
+          tokenInput.classList.add("border-red-500");
+          return alert("GitLab Personal Access Token is required.");
+        }
+
         try {
           await setupInitialUser(
             username,

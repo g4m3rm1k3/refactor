@@ -89,8 +89,10 @@ async def get_all_files(
                     'user') == username else "locked"
                 file_data['locked_by'] = lock_info.get('user')
                 file_data['locked_at'] = lock_info.get('timestamp')
+                file_data['checkout_message'] = lock_info.get('message', '')
             else:
                 file_data['status'] = "unlocked"
+                file_data['checkout_message'] = ''
 
             # Enrich with metadata from .meta.json files
             meta_content_bytes = git_repo.get_file_content(
@@ -104,10 +106,23 @@ async def get_all_files(
                     logger.warning(
                         f"Could not parse metadata for {path_for_meta}")
 
-            # Grouping logic
-            group_name = "Miscellaneous"
-            if file_data['filename'][:2].isdigit():
-                group_name = f"{file_data['filename'][:2]}XXXXX"
+            # Hierarchical grouping: first 2 digits (main group), then 7 digits (subgroup)
+            filename = file_data['filename']
+
+            # Add group and subgroup metadata to file for frontend rendering
+            if len(filename) >= 2 and filename[:2].isdigit():
+                file_data['group'] = f"{filename[:2]}XXXXX"
+                # If has 7 digits, also add subgroup
+                if len(filename) >= 7 and filename[:7].isdigit():
+                    file_data['subgroup'] = filename[:7]
+                else:
+                    file_data['subgroup'] = None
+            else:
+                file_data['group'] = "Miscellaneous"
+                file_data['subgroup'] = None
+
+            # Group by the main group (first 2 digits) for return structure
+            group_name = file_data['group']
             if group_name not in grouped_files:
                 grouped_files[group_name] = []
 
@@ -121,7 +136,6 @@ async def get_all_files(
             status_code=500, detail="Failed to retrieve file list.")
 
 
-# This endpoint was moved in the previous step
 @router.post("/{filename}/checkout")
 async def checkout_file(
     filename: str,
@@ -130,10 +144,47 @@ async def checkout_file(
     lock_manager: MetadataManager = Depends(get_lock_manager),
     current_user: dict = Depends(get_current_user)
 ):
-    """Locks a file for a user, preventing others from editing it."""
-    # NOTE: The full logic for this function goes here. For brevity, it is omitted.
-    # Please use the full function body from the previous step.
-    return {}
+    """Locks a file for a user with a message explaining why, preventing others from editing it."""
+    if request.user != current_user.get('sub'):
+        raise HTTPException(status_code=403, detail="User mismatch")
+
+    file_path = git_repo.find_file_path(filename)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Check if already locked
+    existing_lock = lock_manager.get_lock_info(file_path)
+    if existing_lock:
+        raise HTTPException(
+            status_code=409,
+            detail=f"File is already checked out by {existing_lock['user']}"
+        )
+
+    # Create lock with message
+    lock_file_path = lock_manager.create_lock(
+        file_path=file_path,
+        user=request.user,
+        message=request.message or ""
+    )
+
+    if not lock_file_path:
+        raise HTTPException(status_code=500, detail="Failed to create lock")
+
+    # Commit the lock to Git
+    relative_lock_path = str(lock_file_path.relative_to(git_repo.repo_path))
+    success = git_repo.commit_and_push(
+        file_paths=[relative_lock_path],
+        message=f"CHECKOUT: {filename} by {request.user} - {request.message[:50] if request.message else 'No reason provided'}",
+        author_name=request.user
+    )
+
+    if not success:
+        # Rollback lock if push fails
+        lock_manager.release_lock(file_path)
+        raise HTTPException(status_code=500, detail="Failed to sync checkout")
+
+    logger.info(f"File {filename} checked out by {request.user}")
+    return {"status": "success", "message": f"File {filename} is now checked out"}
 
 # --- NEWLY ADDED ENDPOINTS ---
 

@@ -4,7 +4,8 @@
       "Bash(python -c \"from app.api import dependencies; print(''dependencies.py imports OK'')\")",
       "Bash(python -c \"from app.core import security; print(''security.py imports OK'')\")",
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Read(//c/Users/g4m3r/MastercamGitRepo/74609002/**)"
     ],
     "deny": [],
     "ask": []

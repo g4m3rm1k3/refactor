@@ -20,10 +20,12 @@ export async function login(username, password) {
 
   const result = await response.json();
   // The browser has the cookie. We just update the app's state.
+  console.log("Login successful, updating state:", result);
   setState({
     currentUser: result.username,
     isAdmin: result.is_admin,
     isAuthenticated: true,
+    isConfigured: true // Make sure app knows it's configured
   });
   return result;
 }
@@ -63,13 +65,37 @@ export async function checkPasswordExists(username) {
     body: formData,
   });
   const data = await response.json();
-  return data.has_password;
+  console.log("checkPasswordExists response:", data);
+  // Return the boolean value directly
+  return data.has_password === true;
 }
 
-export function logout() {
-  // A proper logout would call a /logout endpoint on the backend
-  // to invalidate the cookie, but for now, a reload works.
-  window.location.reload();
+export async function logout() {
+  try {
+    // Call the logout endpoint to clear the auth cookie
+    const response = await fetch("/auth/logout", {
+      method: "POST",
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+      throw new Error("Logout failed");
+    }
+
+    // Clear local state and reload to show login screen
+    setState({
+      currentUser: null,
+      isAdmin: false,
+      isAuthenticated: false,
+      isAdminModeEnabled: false
+    });
+
+    window.location.reload();
+  } catch (error) {
+    console.error("Logout error:", error);
+    // Even if logout fails, still reload to reset the UI
+    window.location.reload();
+  }
 }
 
 export async function checkSession() {

@@ -301,6 +301,36 @@ async def validate_token(current_user: dict = Depends(get_current_user)):
     return {"valid": True, "user": current_user}
 
 
+@router.post("/logout")
+async def logout(response: Response):
+    """
+    Logout endpoint - clears the authentication cookie.
+
+    This invalidates the session by removing the auth_token cookie
+    from the browser.
+
+    Args:
+        response: FastAPI Response object (for clearing cookies)
+
+    Returns:
+        {"status": "success", "message": "Logged out successfully"}
+    """
+    # Clear the auth cookie by setting it to expire immediately
+    response.delete_cookie(
+        key="auth_token",
+        httponly=True,
+        secure=False,  # Must match the cookie creation settings
+        samesite="lax"
+    )
+
+    logger.info("User logged out successfully")
+
+    return {
+        "status": "success",
+        "message": "Logged out successfully"
+    }
+
+
 @router.post("/request_reset")
 async def request_password_reset(
     username: str = Form(...),

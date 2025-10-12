@@ -217,8 +217,10 @@ class GitRepository:
 
     def commit_and_push(self, file_paths: List[str], message: str, author_name: str) -> bool:
         if not self.repo:
+            logger.error("No repo instance available for commit_and_push")
             return False
         try:
+            logger.info(f"Starting commit_and_push for files: {file_paths}")
             with self.lock_manager, self.repo.git.custom_environment(**self.git_env):
                 author = Actor(author_name, f"{author_name}@example.com")
 
@@ -227,17 +229,25 @@ class GitRepository:
                 to_remove = [p for p in file_paths if not (
                     self.repo_path / p).exists()]
 
+                logger.info(f"Files to add: {to_add}, Files to remove: {to_remove}")
+
                 if to_add:
                     self.repo.index.add(to_add)
+                    logger.info(f"Added {len(to_add)} files to index")
                 if to_remove:
                     self.repo.index.remove(to_remove)
+                    logger.info(f"Removed {len(to_remove)} files from index")
 
                 if not self.repo.is_dirty(untracked_files=True):
                     logger.info("No changes to commit.")
                     return True
 
+                logger.info(f"Creating commit with message: {message}")
                 self.repo.index.commit(message, author=author, skip_hooks=True)
-                self.repo.remotes.origin.push()
+                logger.info("Commit created, pushing to remote...")
+
+                push_result = self.repo.remotes.origin.push()
+                logger.info(f"Push completed. Result: {push_result}")
                 logger.info(f"Changes pushed to remote: {message}")
                 return True
         except Exception as e:

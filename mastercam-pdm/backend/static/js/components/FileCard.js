@@ -4,57 +4,60 @@ import { formatDate, formatBytes } from "../utils/helpers.js";
 import { showCheckinDialog } from "./CheckinModal.js";
 import { showHistoryDialog } from "./HistoryModal.js";
 import { showConfirmDialog } from "./ConfirmModal.js";
+import { showCheckoutDialog } from "./CheckoutModal.js";
+import { showStatusDialog } from "./StatusModal.js";
+import { showViewOnlyDialog } from "./ViewOnlyModal.js";
 import {
   getFiles,
-  checkoutFile,
   cancelCheckout,
   deleteFile,
   overrideLock,
 } from "../api/service.js";
 import { setState } from "../state/store.js";
+import { attachTooltipToDynamicElement, refreshTooltips } from "../utils/tooltips.js";
 
 /**
  * Creates the full HTML for all action buttons based on the file's state.
  * This is your complete and correct function.
  */
 function getActionButtons(file, currentUser, isAdmin) {
-  const btnClass =
-    "flex items-center space-x-2 px-4 py-2 rounded-md transition-all text-sm font-semibold border-2";
+  const btnBase = "btn";
   let buttons = "";
 
   if (file.is_link) {
-    buttons += `<button class="${btnClass} bg-purple-600 border-purple-800 text-white hover:bg-purple-700 js-view-master-btn" data-master-file="${file.master_file}"><i class="fa-solid fa-link"></i><span>View Master</span></button>`;
-    buttons += `<button class="${btnClass} bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300 js-history-btn"><i class="fa-solid fa-history"></i><span>History</span></button>`;
+    buttons += `<button class="${btnBase} file-btn-link js-view-master-btn" data-master-file="${file.master_file}" data-tooltip-key="viewMasterBtn"><i class="fa-solid fa-link"></i><span>View Master</span></button>`;
+    // NO history button for links
     if (isAdmin) {
-      buttons += `<button class="${btnClass} bg-red-600 border-red-800 text-white hover:bg-red-700 js-delete-btn"><i class="fa-solid fa-trash-can"></i><span>Remove Link</span></button>`;
+      buttons += `<button class="${btnBase} file-btn-delete js-delete-btn" data-tooltip-key="deleteLinkBtn"><i class="fa-solid fa-trash-can"></i><span>Remove Link</span></button>`;
     }
     return buttons;
   }
 
-  let viewBtnHtml = `<button class="${btnClass} bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300 js-download-btn"><i class="fa-solid fa-file-arrow-down"></i><span>Download</span></button>`;
-  if (file.status === "checked_out_by_user") {
-    viewBtnHtml = `<a href="/files/${file.filename}/download" class="${btnClass} bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300"><i class="fa-solid fa-file-arrow-down"></i><span>Download</span></a>`;
-  }
+  // Download button - always allow downloading (view-only if not checked out)
+  const downloadLabel = file.status === "checked_out_by_user" ? "Download" : "View (Read-Only)";
+  const downloadBtn = `<button class="${btnBase} file-btn-download js-download-btn" data-tooltip-key="downloadBtn"><i class="fa-solid fa-file-arrow-down"></i><span>${downloadLabel}</span></button>`;
 
   switch (file.status) {
     case "unlocked":
-      buttons += `<button class="${btnClass} bg-green-600 border-green-800 text-white hover:bg-green-700 js-checkout-btn"><i class="fa-solid fa-download"></i><span>Checkout</span></button>`;
+      buttons += `<button class="${btnBase} file-btn-checkout js-checkout-btn" data-tooltip-key="checkoutBtn"><i class="fa-solid fa-download"></i><span>Checkout</span></button>`;
       break;
     case "checked_out_by_user":
-      buttons += `<button class="${btnClass} bg-blue-600 border-blue-800 text-white hover:bg-blue-700 js-checkin-btn"><i class="fa-solid fa-upload"></i><span>Check In</span></button>`;
-      buttons += `<button class="${btnClass} bg-yellow-600 border-yellow-800 text-white hover:bg-yellow-700 js-cancel-checkout-btn"><i class="fa-solid fa-times"></i><span>Cancel</span></button>`;
+      buttons += `<button class="${btnBase} file-btn-checkin js-checkin-btn" data-tooltip-key="checkinBtn"><i class="fa-solid fa-upload"></i><span>Check In</span></button>`;
+      buttons += `<button class="${btnBase} file-btn-cancel js-cancel-checkout-btn" data-tooltip-key="cancelBtn"><i class="fa-solid fa-times"></i><span>Cancel</span></button>`;
       break;
     case "locked":
+      // Show STATUS button instead of checkout when locked by another user
+      buttons += `<button class="${btnBase} file-btn-status js-status-btn" data-tooltip-key="statusBtn"><i class="fa-solid fa-info-circle"></i><span>View Status</span></button>`;
       if (isAdmin) {
-        buttons += `<button class="${btnClass} bg-orange-500 border-orange-700 text-white hover:bg-orange-600 js-override-btn"><i class="fa-solid fa-unlock"></i><span>Override</span></button>`;
+        buttons += `<button class="${btnBase} file-btn-override js-override-btn" data-tooltip-key="overrideBtn"><i class="fa-solid fa-unlock"></i><span>Override Lock</span></button>`;
       }
       break;
   }
 
-  buttons += viewBtnHtml;
-  buttons += `<button class="${btnClass} bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300 js-history-btn"><i class="fa-solid fa-history"></i><span>History</span></button>`;
+  buttons += downloadBtn;
+  buttons += `<button class="${btnBase} file-btn-history js-history-btn" data-tooltip-key="historyBtn"><i class="fa-solid fa-history"></i><span>History</span></button>`;
   if (isAdmin) {
-    buttons += `<button class="${btnClass} bg-red-600 border-red-800 text-white hover:bg-red-700 js-delete-btn"><i class="fa-solid fa-trash-can"></i><span>Delete</span></button>`;
+    buttons += `<button class="${btnBase} file-btn-delete js-delete-btn" data-tooltip-key="deleteBtn"><i class="fa-solid fa-trash-can"></i><span>Delete</span></button>`;
   }
   return buttons;
 }
@@ -118,9 +121,14 @@ export function createFileCard(file, currentUser, isAdmin) {
           "dark:text-red-200"
         );
         statusEl.textContent = `Locked by ${file.locked_by}`;
-        lockInfoEl.innerHTML = `<i class="fa-solid fa-lock text-red-500"></i><span>Locked by: <strong>${
-          file.locked_by
-        }</strong> at ${formatDate(file.locked_at)}</span>`;
+
+        // Show checkout message if available
+        let lockInfoHtml = `<i class="fa-solid fa-lock text-red-500"></i><span>Locked by: <strong>${file.locked_by}</strong> at ${formatDate(file.locked_at)}`;
+        if (file.checkout_message) {
+          lockInfoHtml += ` - <em>"${file.checkout_message}"</em>`;
+        }
+        lockInfoHtml += `</span>`;
+        lockInfoEl.innerHTML = lockInfoHtml;
         break;
       case "checked_out_by_user":
         statusEl.classList.add(
@@ -130,9 +138,14 @@ export function createFileCard(file, currentUser, isAdmin) {
           "dark:text-blue-200"
         );
         statusEl.textContent = "Checked out by you";
-        lockInfoEl.innerHTML = `<i class="fa-solid fa-lock-open text-blue-500"></i><span>You checked this out at ${formatDate(
-          file.locked_at
-        )}</span>`;
+
+        // Show your checkout message
+        let yourLockInfoHtml = `<i class="fa-solid fa-lock-open text-blue-500"></i><span>You checked this out at ${formatDate(file.locked_at)}`;
+        if (file.checkout_message) {
+          yourLockInfoHtml += ` - <em>"${file.checkout_message}"</em>`;
+        }
+        yourLockInfoHtml += `</span>`;
+        lockInfoEl.innerHTML = yourLockInfoHtml;
         break;
     }
   }
@@ -140,6 +153,8 @@ export function createFileCard(file, currentUser, isAdmin) {
   // --- Add Buttons and Event Listeners ---
   const buttonsContainer = card.querySelector('[data-field="action-buttons"]');
   buttonsContainer.innerHTML = getActionButtons(file, currentUser, isAdmin);
+
+  // Tooltips will be attached after rendering via refreshTooltips()
 
   card.addEventListener("click", async (e) => {
     const button = e.target.closest("button, a");
@@ -160,8 +175,12 @@ export function createFileCard(file, currentUser, isAdmin) {
 
     switch (true) {
       case button.classList.contains("js-checkout-btn"):
-        await checkoutFile(file.filename, currentUser);
-        await refreshFiles();
+        // Show checkout modal with required message
+        showCheckoutDialog(file);
+        break;
+      case button.classList.contains("js-status-btn"):
+        // Show status modal with checkout message
+        showStatusDialog(file);
         break;
       case button.classList.contains("js-checkin-btn"):
         showCheckinDialog(file);
@@ -197,6 +216,45 @@ export function createFileCard(file, currentUser, isAdmin) {
         if (confirmed) {
           await overrideLock(file.filename, currentUser);
           await refreshFiles();
+        }
+        break;
+      case button.classList.contains("js-download-btn"):
+        // Show view-only modal if not checked out
+        if (file.status !== "checked_out_by_user") {
+          const proceed = await showViewOnlyDialog(file.filename);
+          if (!proceed) break;
+        }
+        // Download file
+        window.location.href = `/files/${file.filename}/download`;
+        break;
+      case button.classList.contains("js-view-master-btn"):
+        // Navigate to the master file that this link points to
+        const masterFile = button.dataset.masterFile;
+        if (masterFile) {
+          // Find the master file card
+          const masterCard = document.querySelector(`[data-file-id="${masterFile}"]`);
+
+          if (masterCard) {
+            // Open ONLY the parent folders of this specific card
+            let parent = masterCard.closest('details');
+            while (parent) {
+              parent.open = true;
+              parent = parent.parentElement.closest('details');
+            }
+
+            // Small delay for DOM update
+            setTimeout(() => {
+              // Scroll to and highlight the master file card
+              masterCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Highlight with animation
+              masterCard.style.boxShadow = '0 0 20px 5px rgba(245, 158, 11, 0.5)';
+              setTimeout(() => {
+                masterCard.style.boxShadow = '';
+              }, 2000);
+            }, 100);
+          } else {
+            alert(`Master file "${masterFile}" not found in the current view.`);
+          }
         }
         break;
       case button.tagName === "A" && button.href.includes("/download"):
