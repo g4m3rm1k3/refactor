@@ -1,6 +1,6 @@
 // backend/static/js/components/FileCard.js
 
-import { formatDate, formatBytes } from "../utils/helpers.js";
+import { formatDate, formatBytes, showNotification } from "../utils/helpers.js";
 import { showCheckinDialog } from "./CheckinModal.js";
 import { showHistoryDialog } from "./HistoryModal.js";
 import { showConfirmDialog } from "./ConfirmModal.js";
@@ -194,8 +194,14 @@ export function createFileCard(file, currentUser, isAdmin) {
           `Are you sure? Any local changes to <strong>${file.filename}</strong> will be lost.`
         );
         if (confirmed) {
-          await cancelCheckout(file.filename, currentUser);
-          await refreshFiles();
+          try {
+            showNotification("Canceling checkout...", "info");
+            await cancelCheckout(file.filename, currentUser);
+            showNotification(`Checkout canceled for ${file.filename}`, "success");
+            await refreshFiles();
+          } catch (error) {
+            showNotification(`Failed to cancel checkout: ${error.message}`, "error");
+          }
         }
         break;
       case button.classList.contains("js-delete-btn"):
@@ -204,8 +210,14 @@ export function createFileCard(file, currentUser, isAdmin) {
           `Are you sure you want to permanently delete <strong>${file.filename}</strong>?`
         );
         if (confirmed) {
-          await deleteFile(file.filename, currentUser);
-          await refreshFiles();
+          try {
+            showNotification(`Deleting ${file.filename}...`, "info");
+            await deleteFile(file.filename, currentUser);
+            showNotification(`${file.filename} deleted successfully`, "success");
+            await refreshFiles();
+          } catch (error) {
+            showNotification(`Failed to delete file: ${error.message}`, "error");
+          }
         }
         break;
       case button.classList.contains("js-override-btn"):
@@ -214,8 +226,14 @@ export function createFileCard(file, currentUser, isAdmin) {
           `Are you sure you want to forcibly unlock <strong>${file.filename}</strong>?`
         );
         if (confirmed) {
-          await overrideLock(file.filename, currentUser);
-          await refreshFiles();
+          try {
+            showNotification(`Overriding lock on ${file.filename}...`, "warning");
+            await overrideLock(file.filename, currentUser);
+            showNotification(`Lock overridden for ${file.filename}`, "success");
+            await refreshFiles();
+          } catch (error) {
+            showNotification(`Failed to override lock: ${error.message}`, "error");
+          }
         }
         break;
       case button.classList.contains("js-download-btn"):
@@ -225,6 +243,7 @@ export function createFileCard(file, currentUser, isAdmin) {
           if (!proceed) break;
         }
         // Download file
+        showNotification(`Downloading ${file.filename}...`, "info");
         window.location.href = `/files/${file.filename}/download`;
         break;
       case button.classList.contains("js-view-master-btn"):
@@ -235,6 +254,7 @@ export function createFileCard(file, currentUser, isAdmin) {
           const masterCard = document.querySelector(`[data-file-id="${masterFile}"]`);
 
           if (masterCard) {
+            showNotification(`Navigating to ${masterFile}`, "info");
             // Open ONLY the parent folders of this specific card
             let parent = masterCard.closest('details');
             while (parent) {
@@ -253,7 +273,7 @@ export function createFileCard(file, currentUser, isAdmin) {
               }, 2000);
             }, 100);
           } else {
-            alert(`Master file "${masterFile}" not found in the current view.`);
+            showNotification(`Master file "${masterFile}" not found`, "error");
           }
         }
         break;
