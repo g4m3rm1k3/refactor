@@ -4,6 +4,7 @@ import { getConfig, getFiles } from "./api/service.js";
 import { setState, subscribe, getState } from "./state/store.js";
 import { createFileCard } from "./components/FileCard.js";
 import { setupConfigPanel } from "./components/ConfigPanel.js";
+import { initAdminPanel } from "./components/adminPanel.js";
 import { connectWebSocket } from "./services/websocket.js";
 import { showAuthDialog } from "./components/LoginModal.js";
 import { checkSession, checkPasswordExists } from "./services/auth.js";
@@ -327,6 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Wire up all static UI buttons ---
   setupConfigPanel("configBtn");
+  initAdminPanel(); // Initialize admin panel UI
   document
     .getElementById("dashboardBtn")
     ?.addEventListener("click", showDashboardDialog);

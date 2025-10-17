@@ -334,6 +334,12 @@ function openPanel() {
   if (state.isAdmin) {
     panelElement.querySelector("#adminTab")?.classList.remove("hidden");
     panelElement.querySelector("#usersTab")?.classList.remove("hidden");
+
+    // Dispatch event to notify admin panel that tabs are ready
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('adminTabsReady'));
+      console.log('[ConfigPanel] Admin tabs created, dispatching adminTabsReady event');
+    }, 100);
   }
 
   // Add event listener for the config form submission

@@ -26,8 +26,9 @@ from pathlib import Path
 from app.core.config import ConfigManager
 from app.services.lock_service import MetadataManager, ImprovedFileLockManager
 from app.services.git_service import GitRepository, setup_git_lfs_path
+from app.services.admin_config_service import AdminConfigService
 from app.core.security import UserAuth
-from app.api.routers import auth, files, admin, config, websocket, dashboard
+from app.api.routers import auth, files, admin, config, websocket, dashboard, admin_config, gitlab_users
 
 # Configure logging for this module
 # Note: basicConfig should really only be in run.py, but keeping for backwards compat
@@ -150,11 +151,24 @@ async def lifespan(app: FastAPI):
             #    Depends on: git_repo (to validate against GitLab)
             user_auth = UserAuth(git_repo=git_repo)
 
+            # 5. Admin configuration service - manages PDM configuration in GitLab
+            #    Handles filename patterns, repo configs, user access control
+            admin_config_service = AdminConfigService(
+                repo_path=repo_path,
+                git_repo=git_repo
+            )
+            # Load or create default config
+            admin_config_service.load_config()
+
+            # Start polling for config updates from GitLab
+            await admin_config_service.start_polling(git_service=git_repo)
+
             # Store all initialized services on app.state
             # Route handlers will access these via dependency injection
             app.state.metadata_manager = metadata_manager
             app.state.git_repo = git_repo
             app.state.user_auth = user_auth
+            app.state.admin_config_service = admin_config_service
 
             logger.info("Application fully initialized.")
 
@@ -167,6 +181,7 @@ async def lifespan(app: FastAPI):
             app.state.metadata_manager = None
             app.state.git_repo = None
             app.state.user_auth = None
+            app.state.admin_config_service = None
     else:
         # === LIMITED MODE ===
         # GitLab not configured yet - user needs to visit config page
@@ -174,6 +189,7 @@ async def lifespan(app: FastAPI):
         app.state.metadata_manager = None
         app.state.git_repo = None
         app.state.user_auth = None
+        app.state.admin_config_service = None
 
     yield  # === APPLICATION RUNS HERE ===
 
@@ -181,6 +197,11 @@ async def lifespan(app: FastAPI):
 
     # === SHUTDOWN ===
     logger.info("Application shutting down.")
+
+    # Stop admin config polling if running
+    if hasattr(app.state, 'admin_config_service') and app.state.admin_config_service:
+        await app.state.admin_config_service.stop_polling()
+        logger.info("Admin config polling stopped.")
 
     # Save any config changes that happened during runtime
     # hasattr check protects against startup failures
@@ -226,12 +247,14 @@ app.add_middleware(
 
 # Each router groups related endpoints
 # Routes are prefixed and tagged for organization in /docs
-app.include_router(auth.router)        # /api/auth/* - Login, logout
-app.include_router(files.router)       # /api/files/* - File operations
-app.include_router(admin.router)       # /api/admin/* - Admin actions
-app.include_router(config.router)      # /api/config/* - Configuration
-app.include_router(websocket.router)   # /ws - Real-time updates
-app.include_router(dashboard.router)   # /api/dashboard/* - Statistics
+app.include_router(auth.router)         # /api/auth/* - Login, logout
+app.include_router(files.router)        # /api/files/* - File operations
+app.include_router(admin.router)        # /api/admin/* - Admin actions
+app.include_router(config.router)       # /api/config/* - Configuration
+app.include_router(admin_config.router) # /api/admin/config/* - Admin configuration
+app.include_router(gitlab_users.router) # /api/gitlab/users/* - GitLab user management
+app.include_router(websocket.router)    # /ws - Real-time updates
+app.include_router(dashboard.router)    # /api/dashboard/* - Statistics
 
 # === ROOT ENDPOINT ===
 

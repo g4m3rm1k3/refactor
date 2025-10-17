@@ -336,6 +336,39 @@ async def get_file_history(
 
     history = git_repo.get_file_history(file_path)
     return {"filename": filename, "history": history}
+
+
+@router.get("/{filename}/history/revisions", response_model=schemas.FileHistoryWithRevisions)
+async def get_file_history_revisions(
+    filename: str,
+    start_revision: Optional[str] = None,
+    end_revision: Optional[str] = None,
+    limit: int = 50,
+    git_repo: GitRepository = Depends(get_git_repo)
+):
+    """
+    Retrieves revision-based file history with optional range filtering.
+
+    Query Parameters:
+        - start_revision: Optional starting revision (e.g., "1.0")
+        - end_revision: Optional ending revision (e.g., "20.5")
+        - limit: Maximum revisions to return (default: 50)
+
+    Returns:
+        File history with revision range, total count, and list of revisions
+    """
+    file_path = git_repo.find_file_path(filename)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    history_data = git_repo.get_file_history_with_revisions(
+        file_path,
+        start_revision=start_revision,
+        end_revision=end_revision,
+        limit=limit
+    )
+
+    return history_data
 # Add to backend/app/api/routers/files.py
 
 

@@ -383,6 +383,139 @@ class GitRepository:
                 f"Git command failed while getting history for {file_path}: {e}")
             return []
 
+    def get_file_history_with_revisions(
+        self,
+        file_path: str,
+        start_revision: Optional[str] = None,
+        end_revision: Optional[str] = None,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get file history with revision-based filtering and range support.
+
+        Args:
+            file_path: Path to the file
+            start_revision: Optional starting revision (e.g., "1.0")
+            end_revision: Optional ending revision (e.g., "20.5")
+            limit: Maximum number of revisions to return
+
+        Returns:
+            Dict containing:
+                - filename: str
+                - total_revisions: int
+                - revision_range: str (e.g., "1.0 - 20.5")
+                - revisions: List of revision entries
+                - filtered: bool (whether results are filtered by range)
+        """
+        if not self.repo:
+            return {
+                "filename": Path(file_path).name,
+                "total_revisions": 0,
+                "revision_range": "0.0 - 0.0",
+                "revisions": [],
+                "filtered": False
+            }
+
+        def parse_revision(rev_str: str) -> tuple[int, int]:
+            """Parse revision string like '1.5' into (major, minor)"""
+            try:
+                parts = rev_str.split('.')
+                major = int(parts[0])
+                minor = int(parts[1]) if len(parts) > 1 else 0
+                return (major, minor)
+            except (ValueError, IndexError):
+                return (0, 0)
+
+        def compare_revisions(rev1: str, rev2: str) -> int:
+            """Compare two revisions. Returns -1, 0, or 1"""
+            if not rev1 or not rev2:
+                return 0
+            maj1, min1 = parse_revision(rev1)
+            maj2, min2 = parse_revision(rev2)
+
+            if maj1 < maj2:
+                return -1
+            elif maj1 > maj2:
+                return 1
+            elif min1 < min2:
+                return -1
+            elif min1 > min2:
+                return 1
+            return 0
+
+        # Get all history first
+        all_history = self.get_file_history(file_path, limit=1000)
+
+        # Extract revisions (filter out None values)
+        revisions_with_data = []
+        for entry in all_history:
+            if entry.get('revision'):
+                revisions_with_data.append(entry)
+
+        if not revisions_with_data:
+            return {
+                "filename": Path(file_path).name,
+                "total_revisions": 0,
+                "revision_range": "0.0 - 0.0",
+                "revisions": [],
+                "filtered": False
+            }
+
+        # Sort by revision (newest first)
+        revisions_with_data.sort(
+            key=lambda x: parse_revision(x.get('revision', '0.0')),
+            reverse=True
+        )
+
+        # Calculate overall range
+        oldest_rev = revisions_with_data[-1].get('revision', '0.0')
+        newest_rev = revisions_with_data[0].get('revision', '0.0')
+        overall_range = f"{oldest_rev} - {newest_rev}"
+
+        # Apply filtering if requested
+        filtered = False
+        if start_revision or end_revision:
+            filtered = True
+            filtered_revisions = []
+
+            for entry in revisions_with_data:
+                rev = entry.get('revision')
+                if not rev:
+                    continue
+
+                # Check if revision is within range
+                if start_revision and compare_revisions(rev, start_revision) < 0:
+                    continue
+                if end_revision and compare_revisions(rev, end_revision) > 0:
+                    continue
+
+                filtered_revisions.append(entry)
+
+            revisions_with_data = filtered_revisions
+
+        # Apply limit
+        if len(revisions_with_data) > limit:
+            revisions_with_data = revisions_with_data[:limit]
+
+        # Format response
+        formatted_revisions = []
+        for entry in revisions_with_data:
+            formatted_revisions.append({
+                "revision": entry.get('revision'),
+                "commit_hash": entry.get('commit_hash'),
+                "author": entry.get('author_name'),
+                "timestamp": entry.get('date'),
+                "message": entry.get('message')
+            })
+
+        return {
+            "filename": Path(file_path).name,
+            "total_revisions": len(formatted_revisions),
+            "revision_range": overall_range,
+            "revisions": formatted_revisions,
+            "filtered": filtered
+        }
+
     def get_all_users_from_history(self) -> List[str]:
         if not self.repo:
             return []

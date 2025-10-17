@@ -1,0 +1,21 @@
+{
+  "main_repository": {
+    "id": "main",
+    "name": "Main Repository",
+    "gitlab_url": "https://gitlab.com",
+    "project_id": "74609002",
+    "branch": "main",
+    "description": "Primary repository - all users connect here first"
+  },
+  "auto_registration": {
+    "enabled": true,
+    "default_repository": "main",
+    "require_admin_approval": false,
+    "notify_admins_on_new_user": true
+  },
+  "filename_validation": {
+    "strict_mode": true,
+    "reject_invalid": true,
+    "allow_admin_override": true
+  }
+}

@@ -204,6 +204,38 @@ def get_lock_manager(request: Request):
     return metadata_manager
 
 
+def get_admin_config_service(request: Request):
+    """
+    Retrieve the AdminConfigService from app state.
+
+    The AdminConfigService handles the PDM admin configuration stored in GitLab,
+    including filename patterns, repository configs, and user access control.
+
+    Args:
+        request: FastAPI Request object
+
+    Returns:
+        AdminConfigService instance or None if not initialized
+
+    Note: This can be None if GitLab isn't configured.
+
+    Usage in route:
+        @router.get("/admin/config")
+        def get_config(
+            config_service = Depends(get_admin_config_service)
+        ):
+            if not config_service:
+                raise HTTPException(503, "Service not available")
+            return config_service.get_config()
+    """
+    admin_config_service = getattr(request.app.state, 'admin_config_service', None)
+
+    if admin_config_service is None:
+        logger.debug("AdminConfigService not available - GitLab not configured")
+
+    return admin_config_service
+
+
 # ============================================================================
 # AUTHENTICATION DEPENDENCIES
 # ============================================================================

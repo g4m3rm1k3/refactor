@@ -145,6 +145,36 @@
       .file-btn-link:hover {
         background-color: #7e22ce;
       }
+
+      /* Admin subtab styles */
+      .admin-subtab {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+      }
+
+      .admin-subtab:hover {
+        border-bottom-color: #f59e0b;
+      }
+
+      .admin-subtab.active {
+        border-bottom-color: #f59e0b;
+        color: #f59e0b;
+      }
+
+      .admin-subtab-content {
+        display: none;
+      }
+
+      .admin-subtab-content:not(.hidden) {
+        display: block;
+      }
     </style>
   </head>
 
@@ -620,42 +650,147 @@
         </div>
 
         <div id="adminContent" class="config-tab-content hidden">
-          <div class="space-y-6">
-            <div>
-              <h4 class="text-lg font-semibold mb-4">
-                <i class="fa-solid fa-tools mr-2"></i>Maintenance
-              </h4>
-              <div class="space-y-3">
-                <button
-                  id="createBackupBtn"
-                  class="btn btn-secondary w-full justify-center"
-                >
-                  Create Manual Backup
-                </button>
-                <button
-                  id="cleanupLfsBtn"
-                  class="btn btn-secondary w-full justify-center"
-                >
-                  Cleanup Old Files
-                </button>
-                <button
-                  id="exportRepoBtn"
-                  class="btn btn-secondary w-full justify-center"
-                >
-                  Export Repository as Zip
+          <!-- Admin Configuration Navigation -->
+          <div class="flex space-x-1 mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
+            <button class="admin-subtab active" data-tab="patterns">
+              <i class="fa-solid fa-file-signature"></i> Patterns
+            </button>
+            <button class="admin-subtab" data-tab="repositories">
+              <i class="fa-solid fa-database"></i> Repos
+            </button>
+            <button class="admin-subtab" data-tab="access">
+              <i class="fa-solid fa-user-lock"></i> Access
+            </button>
+            <button class="admin-subtab" data-tab="maintenance">
+              <i class="fa-solid fa-tools"></i> Tools
+            </button>
+          </div>
+
+          <!-- Filename Patterns Tab -->
+          <div id="adminPatterns" class="admin-subtab-content">
+            <div class="space-y-4">
+              <div class="flex justify-between items-center">
+                <h4 class="text-lg font-semibold">
+                  <i class="fa-solid fa-file-signature mr-2"></i>Filename Patterns
+                </h4>
+                <button id="addPatternBtn" class="btn btn-primary text-sm">
+                  <i class="fa-solid fa-plus"></i> Add Pattern
                 </button>
               </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Define regex patterns for filename validation. Each pattern can be assigned to repositories.
+              </p>
+              <div id="patternsList" class="space-y-3">
+                <div class="text-center py-8 text-gray-500">
+                  <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                  <p>Loading patterns...</p>
+                </div>
+              </div>
             </div>
-            <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <h4 class="text-lg font-semibold mb-4 text-red-600">
-                <i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone
-              </h4>
-              <button
-                id="resetRepoBtn"
-                class="btn w-full justify-center bg-red-600 hover:bg-red-700 text-white"
-              >
-                Reset Repository to GitLab
-              </button>
+          </div>
+
+          <!-- Repositories Tab -->
+          <div id="adminRepositories" class="admin-subtab-content hidden">
+            <div class="space-y-4">
+              <div class="flex justify-between items-center">
+                <h4 class="text-lg font-semibold">
+                  <i class="fa-solid fa-database mr-2"></i>Repository Configuration
+                </h4>
+                <button id="addRepoBtn" class="btn btn-primary text-sm">
+                  <i class="fa-solid fa-plus"></i> Add Repository
+                </button>
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Configure multiple repositories with different file types and naming patterns.
+              </p>
+              <div id="repositoriesList" class="space-y-3">
+                <div class="text-center py-8 text-gray-500">
+                  <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                  <p>Loading repositories...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- User Access Tab -->
+          <div id="adminAccess" class="admin-subtab-content hidden">
+            <div class="space-y-4">
+              <div class="flex justify-between items-center">
+                <h4 class="text-lg font-semibold">
+                  <i class="fa-solid fa-user-lock mr-2"></i>User Repository Access
+                </h4>
+                <button id="addUserAccessBtn" class="btn btn-primary text-sm">
+                  <i class="fa-solid fa-plus"></i> Add User
+                </button>
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Control which users can access which repositories. No entry = access to all.
+              </p>
+              <div id="userAccessList" class="space-y-3">
+                <div class="text-center py-8 text-gray-500">
+                  <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                  <p>Loading user access...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Maintenance Tab -->
+          <div id="adminMaintenance" class="admin-subtab-content hidden">
+            <div class="space-y-6">
+              <div>
+                <h4 class="text-lg font-semibold mb-4">
+                  <i class="fa-solid fa-tools mr-2"></i>Maintenance Tools
+                </h4>
+                <div class="space-y-3">
+                  <button
+                    id="createBackupBtn"
+                    class="btn btn-secondary w-full justify-center"
+                  >
+                    <i class="fa-solid fa-floppy-disk mr-2"></i>Create Manual Backup
+                  </button>
+                  <button
+                    id="cleanupLfsBtn"
+                    class="btn btn-secondary w-full justify-center"
+                  >
+                    <i class="fa-solid fa-broom mr-2"></i>Cleanup Old Files
+                  </button>
+                  <button
+                    id="exportRepoBtn"
+                    class="btn btn-secondary w-full justify-center"
+                  >
+                    <i class="fa-solid fa-file-zipper mr-2"></i>Export Repository as Zip
+                  </button>
+                  <button
+                    id="reloadConfigBtn"
+                    class="btn btn-secondary w-full justify-center"
+                  >
+                    <i class="fa-solid fa-rotate mr-2"></i>Reload Config from GitLab
+                  </button>
+                </div>
+              </div>
+              <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <h4 class="text-lg font-semibold mb-2">
+                  <i class="fa-solid fa-info-circle mr-2"></i>Configuration Info
+                </h4>
+                <div class="text-sm space-y-1" id="adminConfigInfo">
+                  <p><strong>Config Version:</strong> <span id="configVersion">...</span></p>
+                  <p><strong>Last Updated By:</strong> <span id="configUpdatedBy">...</span></p>
+                  <p><strong>Last Updated:</strong> <span id="configUpdatedAt">...</span></p>
+                  <p><strong>Polling Interval:</strong> <span id="configPolling">...</span>s</p>
+                </div>
+              </div>
+              <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <h4 class="text-lg font-semibold mb-4 text-red-600">
+                  <i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone
+                </h4>
+                <button
+                  id="resetRepoBtn"
+                  class="btn w-full justify-center bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <i class="fa-solid fa-triangle-exclamation mr-2"></i>Reset Repository to GitLab
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -669,6 +804,194 @@
         </div>
       </div>
     </template>
+
+    <!-- Admin Config Modals -->
+    <template id="template-pattern-modal">
+      <div class="panel-bg rounded-xl shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <form id="patternForm">
+          <h3 id="patternModalTitle" class="text-xl font-semibold mb-4">
+            <i class="fa-solid fa-file-signature mr-2"></i>Add Filename Pattern
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label for="patternName" class="block text-sm font-medium mb-1">
+                Pattern Name <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="patternName" required class="input-field" placeholder="e.g., Extended Pattern 2025" />
+            </div>
+            <div>
+              <label for="patternDescription" class="block text-sm font-medium mb-1">
+                Description <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="patternDescription" required class="input-field" placeholder="e.g., 7 digits + 2 letters + unlimited numbers" />
+            </div>
+            <div>
+              <label for="linkPattern" class="block text-sm font-medium mb-1">
+                Link Pattern (Regex) <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="linkPattern" required class="input-field font-mono text-sm" placeholder="e.g., ^\d{7}_[A-Z]{2}\d+$" />
+              <p class="text-xs text-gray-500 mt-1">Regex for link files (without extension)</p>
+            </div>
+            <div>
+              <label for="filePattern" class="block text-sm font-medium mb-1">
+                File Pattern (Regex) <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="filePattern" required class="input-field font-mono text-sm" placeholder="e.g., ^\d{7}_[A-Z]{2}\d+$" />
+              <p class="text-xs text-gray-500 mt-1">Regex for regular files (without extension)</p>
+            </div>
+            <div>
+              <label for="maxStemLength" class="block text-sm font-medium mb-1">
+                Max Filename Length <span class="text-red-500">*</span>
+              </label>
+              <input type="number" id="maxStemLength" required class="input-field" value="20" min="1" max="100" />
+              <p class="text-xs text-gray-500 mt-1">Maximum characters before file extension</p>
+            </div>
+            <div>
+              <label for="exampleValid" class="block text-sm font-medium mb-1">
+                Valid Examples (comma-separated)
+              </label>
+              <input type="text" id="exampleValid" class="input-field" placeholder="e.g., 1234567_AB123, 1234567_XY999" />
+            </div>
+            <div>
+              <label for="exampleInvalid" class="block text-sm font-medium mb-1">
+                Invalid Examples (comma-separated)
+              </label>
+              <input type="text" id="exampleInvalid" class="input-field" placeholder="e.g., 123456, 1234567_ABC123" />
+            </div>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Pattern</button>
+          </div>
+        </form>
+      </div>
+    </template>
+
+    <template id="template-repository-modal">
+      <div class="panel-bg rounded-xl shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <form id="repositoryForm">
+          <h3 id="repositoryModalTitle" class="text-xl font-semibold mb-4">
+            <i class="fa-solid fa-database mr-2"></i>Add Repository
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label for="repoId" class="block text-sm font-medium mb-1">
+                Repository ID <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="repoId" required class="input-field" placeholder="e.g., main, legacy, projects2025" />
+              <p class="text-xs text-gray-500 mt-1">Unique identifier (lowercase, no spaces)</p>
+            </div>
+            <div>
+              <label for="repoName" class="block text-sm font-medium mb-1">
+                Display Name <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="repoName" required class="input-field" placeholder="e.g., Main Repository" />
+            </div>
+            <div>
+              <label for="repoGitlabUrl" class="block text-sm font-medium mb-1">
+                GitLab URL <span class="text-red-500">*</span>
+              </label>
+              <input type="url" id="repoGitlabUrl" required class="input-field" placeholder="https://gitlab.com/group/project" />
+            </div>
+            <div>
+              <label for="repoProjectId" class="block text-sm font-medium mb-1">
+                Project ID <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="repoProjectId" required class="input-field" placeholder="e.g., 74609002" />
+            </div>
+            <div>
+              <label for="repoBranch" class="block text-sm font-medium mb-1">
+                Branch <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="repoBranch" required class="input-field" value="main" />
+            </div>
+            <div>
+              <label for="repoFileTypes" class="block text-sm font-medium mb-1">
+                Allowed File Types <span class="text-red-500">*</span>
+              </label>
+              <div class="flex flex-wrap gap-2 mb-2" id="selectedFileTypes"></div>
+              <div class="flex flex-wrap gap-2">
+                <label class="inline-flex items-center">
+                  <input type="checkbox" class="file-type-checkbox" value=".mcam" checked />
+                  <span class="ml-2">.mcam</span>
+                </label>
+                <label class="inline-flex items-center">
+                  <input type="checkbox" class="file-type-checkbox" value=".vnc" checked />
+                  <span class="ml-2">.vnc</span>
+                </label>
+                <label class="inline-flex items-center">
+                  <input type="checkbox" class="file-type-checkbox" value=".emcam" checked />
+                  <span class="ml-2">.emcam</span>
+                </label>
+                <label class="inline-flex items-center">
+                  <input type="checkbox" class="file-type-checkbox" value=".link" checked />
+                  <span class="ml-2">.link</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label for="repoPatternId" class="block text-sm font-medium mb-1">
+                Filename Pattern <span class="text-red-500">*</span>
+              </label>
+              <select id="repoPatternId" required class="input-field">
+                <option value="">Select a pattern...</option>
+              </select>
+            </div>
+            <div>
+              <label for="repoDescription" class="block text-sm font-medium mb-1">
+                Description
+              </label>
+              <textarea id="repoDescription" rows="2" class="input-field" placeholder="Optional repository description"></textarea>
+            </div>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Repository</button>
+          </div>
+        </form>
+      </div>
+    </template>
+
+    <template id="template-user-access-modal">
+      <div class="panel-bg rounded-xl shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <form id="userAccessForm">
+          <h3 id="userAccessModalTitle" class="text-xl font-semibold mb-4">
+            <i class="fa-solid fa-user-lock mr-2"></i>Add User Access
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label for="accessUsername" class="block text-sm font-medium mb-1">
+                Username <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="accessUsername" required class="input-field" placeholder="e.g., john_doe" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2">
+                Accessible Repositories <span class="text-red-500">*</span>
+              </label>
+              <div class="space-y-2 max-h-48 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded p-3" id="repositoryCheckboxes">
+                <p class="text-sm text-gray-500">Loading repositories...</p>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">Select at least one repository</p>
+            </div>
+            <div>
+              <label for="defaultRepoId" class="block text-sm font-medium mb-1">
+                Default Repository
+              </label>
+              <select id="defaultRepoId" class="input-field">
+                <option value="">None (use first in list)</option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">Repository to open on login</p>
+            </div>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Access</button>
+          </div>
+        </form>
+      </div>
+    </template>
+
     <template id="template-login-modal">
       <div
         class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md"

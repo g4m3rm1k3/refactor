@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status, Form
 from app.core.security import UserAuth, ADMIN_USERS
 from app.api.dependencies import get_user_auth, get_current_user, get_config_manager
 from app.models import schemas
+from app.models.gitlab_users import get_gitlab_user_registry
 from app.core.config import ConfigManager
 import requests
 import logging
@@ -69,6 +70,11 @@ async def login(
 
     # Create JWT token with username and expiration
     access_token = auth_service.create_access_token(username)
+
+    # Update last_seen for GitLab user
+    registry = get_gitlab_user_registry()
+    if registry.get_user(username):
+        registry.register_user(username)  # Updates last_seen
 
     logger.info(f"User logged in: {username}")
 
@@ -202,6 +208,23 @@ async def setup_initial_user(
             )
 
         logger.info(f"GitLab token verified for {setup_data.username}")
+
+        # ===== AUTO-REGISTER GITLAB USER =====
+        # Register this user in the GitLab user registry
+        registry = get_gitlab_user_registry()
+        gitlab_user_record, is_new_user = registry.register_user(
+            username=setup_data.username,
+            gitlab_id=gitlab_user.get("id"),
+            email=gitlab_user.get("email"),
+            display_name=gitlab_user.get("name"),
+            is_admin=setup_data.username in ADMIN_USERS
+        )
+
+        if is_new_user:
+            logger.info(f"🎉 NEW GitLab user registered: {setup_data.username}")
+            # TODO: Create notification for admins about new user
+        else:
+            logger.info(f"Existing GitLab user reconnected: {setup_data.username}")
 
     except requests.exceptions.RequestException as e:
         # Convert technical errors to user-friendly messages
